@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+openspec/
+preferences.json
+docs/
+no-model.png

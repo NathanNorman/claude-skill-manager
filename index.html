@@ -1,0 +1,2413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code Skill Manager</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://use.typekit.net/mtn4lrp.css">
+<style>
+  :root {
+    --bg: #F7F7F7;
+    --surface: #FFFFFF;
+    --surface-hover: #F0F0F0;
+    --border: #E5E5E5;
+    --border-light: #C0C0C0;
+    --text: #252525;
+    --text-dim: #474747;
+    --text-muted: #7A7A7A;
+    --accent: #FF4C00;
+    --accent-dim: #DD3B11;
+    --green: #227800;
+    --green-dim: #E8F7D4;
+    --red: #D40023;
+    --red-dim: #FFE6E9;
+    --yellow: #F76600;
+    --purple: #4A25A7;
+    --blue: #2B4FB9;
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'effra', 'Source Sans 3', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* Stats bar */
+  .stats {
+    display: flex;
+    gap: 24px;
+    padding: 14px 0;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .stat { display: flex; gap: 6px; align-items: center; }
+  .stat-value { color: var(--text); font-weight: 600; }
+  .stat-label { color: var(--text-muted); }
+  .stat-warn .stat-value { color: var(--red); }
+  .stat-ok .stat-value { color: var(--green); }
+
+  /* Budget bar */
+  .budget-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .budget-bar {
+    flex: 1;
+    height: 8px;
+    background: #E5E5E5;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .budget-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  .budget-bar-fill.budget-ok { background: var(--green); }
+  .budget-bar-fill.budget-warn { background: var(--yellow); }
+  .budget-bar-fill.budget-over { background: var(--red); }
+
+  .budget-text {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  /* Filter bar */
+  .filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .filter-btn:hover { border-color: var(--border-light); color: var(--text); }
+  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: #FCE8E5; }
+
+  .search {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    width: 260px;
+    margin-left: auto;
+  }
+
+  .search:focus { border-color: var(--accent); }
+  .search::placeholder { color: var(--text-muted); }
+
+  /* Marketplace sections */
+  .marketplace {
+    margin-bottom: 28px;
+  }
+
+  .marketplace-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .marketplace-header:hover .mp-name { color: var(--accent); }
+
+  .mp-chevron {
+    color: var(--text-muted);
+    font-size: 10px;
+    transition: transform 0.15s;
+    width: 16px;
+    text-align: center;
+  }
+
+  .marketplace.collapsed .mp-chevron { transform: rotate(-90deg); }
+  .marketplace.collapsed .marketplace-body { display: none; }
+
+  .mp-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    transition: color 0.15s;
+  }
+
+  .mp-counts {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .mp-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .tag-marketplace { background: #E7EAF6; color: var(--blue); }
+  .tag-local { background: #F2E7FA; color: var(--purple); }
+  .tag-cache { background: #FEEDB4; color: #8B5E00; }
+  .tag-direct { background: #E8F7D4; color: var(--green); }
+
+  /* Plugin */
+  .plugin {
+    margin-left: 16px;
+    margin-bottom: 4px;
+  }
+
+  .plugin-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .plugin-header:hover { background: var(--surface); }
+
+  .plugin-check {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid #999;
+    border-radius: 3px;
+    background: var(--surface);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .plugin-check:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .plugin-check:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+
+  .plugin-check.indeterminate {
+    background: var(--accent-dim);
+    border-color: var(--accent-dim);
+  }
+
+  .plugin-check.indeterminate::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    width: 8px;
+    height: 2px;
+    background: #fff;
+  }
+
+  .plugin-chevron {
+    color: var(--text-muted);
+    font-size: 9px;
+    transition: transform 0.15s;
+    width: 14px;
+    text-align: center;
+  }
+
+  .plugin.collapsed .plugin-chevron { transform: rotate(-90deg); }
+  .plugin.collapsed .plugin-body { display: none; }
+
+  .plugin-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-dim);
+  }
+
+  .plugin-installed {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .installed-yes { background: var(--green-dim); color: var(--green); }
+  .installed-no { background: #F0F0F0; color: var(--text-muted); }
+
+  .install-btn, .uninstall-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid;
+    margin-left: auto;
+    transition: all 0.15s;
+  }
+
+  .install-btn {
+    background: #E8F7D4;
+    border-color: var(--green);
+    color: var(--green);
+  }
+
+  .install-btn:hover {
+    background: #d4efc0;
+  }
+
+  .uninstall-btn {
+    background: #FFE6E9;
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  .uninstall-btn:hover {
+    background: #ffd0d5;
+  }
+
+  .update-btn {
+    background: #E7EAF6;
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+
+  .update-btn:hover {
+    background: #d4d9ed;
+  }
+
+  .check-updates-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: auto;
+  }
+
+  .check-updates-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .check-updates-btn:disabled { opacity: 0.5; cursor: wait; }
+
+  .update-banner {
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    background: #E7EAF6;
+    border: 1px solid #9AA6DB;
+    border-radius: var(--radius);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--blue);
+  }
+
+  .update-banner-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+  }
+
+  .update-banner-row .plugin-name-text {
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .update-banner-row .version-info {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .update-banner-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  .install-btn:disabled, .uninstall-btn:disabled, .update-btn:disabled {
+    opacity: 0.4;
+    cursor: wait;
+  }
+
+  .plugin-skill-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  /* Skill row — clean: dot + checkbox + name + description */
+  .skill {
+    display: grid;
+    grid-template-columns: auto 32px 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px 7px 38px;
+    border-radius: var(--radius);
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+
+  .skill:hover { background: var(--surface-hover); }
+
+  /* Status icons area */
+  .skill-icons {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    min-width: 14px;
+  }
+
+  .skill-dot {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+
+  .skill-shadow-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='%234A25A7' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'%3E%3Crect width='14' height='14' x='8' y='8' rx='2' ry='2'/%3E%3Cpath d='M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'/%3E%3C/g%3E%3C/svg%3E") no-repeat center/contain;
+  }
+
+  .skill-dot.dot-red {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23D40023' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4m0 4h.01'/%3E%3C/svg%3E");
+  }
+  .skill-dot.dot-yellow {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23F76600' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4m0 4h.01'/%3E%3C/svg%3E");
+  }
+  .skill-dot.dot-none { background: transparent; }
+
+  .skill-check {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid #999;
+    border-radius: 3px;
+    background: var(--surface);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s;
+  }
+
+  .skill-check:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .skill-check:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+
+  /* Name + description inline */
+  .skill-summary {
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .skill-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .skill-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 60px 0;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  .loading::after {
+    content: '';
+    animation: dots 1.5s steps(3) infinite;
+  }
+
+  @keyframes dots {
+    0% { content: '.'; }
+    33% { content: '..'; }
+    66% { content: '...'; }
+  }
+
+  .error {
+    text-align: center;
+    padding: 60px 0;
+    color: var(--red);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  /* Disabled skill (toggled off by user) */
+  .skill-disabled .skill-name { color: var(--text-muted); text-decoration: line-through; }
+  .skill-disabled .skill-desc { color: var(--border-light); }
+
+  /* Unloaded skill (exists on disk but not discovered by Claude Code) */
+  .skill-unloaded { opacity: 0.4; }
+  .skill-unloaded .skill-name { color: var(--text-muted); }
+  .skill-unloaded .skill-check {
+    border-color: #666;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* Shadowed skill row */
+  .skill-shadowed .skill-name { color: var(--text-muted); }
+  .skill-shadowed .skill-desc { color: var(--border-light); }
+
+  /* Detail panel (expandable) */
+  .skill-detail {
+    display: none;
+    grid-column: 1 / -1;
+    margin: 4px 0 8px 48px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .skill.skill-expanded .skill-detail {
+    display: block;
+  }
+
+  .skill.skill-expanded {
+    background: var(--surface-hover);
+  }
+
+  .detail-row {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+
+  .detail-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 50px;
+  }
+
+  .detail-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .detail-sep {
+    color: var(--border-light);
+    margin: 0 4px;
+  }
+
+  .detail-path {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    word-break: break-all;
+    margin-top: 6px;
+  }
+
+  .detail-warning {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .detail-warning.warn-yellow {
+    background: #FFF8E1;
+    border: 1px solid #F5A623;
+    color: #8B5E00;
+  }
+
+  .detail-warning.warn-red {
+    background: #FFE6E9;
+    border: 1px solid var(--red);
+    color: var(--red);
+  }
+
+  .detail-warning.warn-green {
+    background: #E8F7D4;
+    border: 1px solid var(--green);
+    color: var(--green);
+  }
+
+  .detail-warning.warn-dim {
+    background: #F0F0F0;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+
+  .detail-action-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid;
+    margin-top: 6px;
+    display: inline-block;
+    transition: all 0.15s;
+    background: #FFE6E9;
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  .detail-action-btn:hover {
+    background: #ffd0d5;
+  }
+
+  /* Missing plugin row */
+  .missing-plugin {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px 7px 38px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  .skill-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 500;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .tag-missing { background: #FFE6E9; color: var(--red); }
+
+  /* Marketplace registry rows */
+  .mp-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px 8px 38px;
+    border-radius: var(--radius);
+    transition: background 0.1s;
+  }
+  .mp-row:hover { background: var(--surface-hover); }
+  .mp-row-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    min-width: 140px;
+  }
+  .mp-row-url {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+  .mp-row-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .mp-row-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .tag-git { background: #FCE8E5; color: var(--accent); }
+  .tag-github { background: #E8F7D4; color: var(--green); }
+  .tag-dir { background: #F2E7FA; color: var(--purple); }
+
+  .mp-add-row {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px 10px 38px;
+    align-items: center;
+  }
+  .mp-add-input {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    flex: 1;
+  }
+  .mp-add-input:focus { border-color: var(--accent); }
+  .mp-add-input::placeholder { color: var(--text-muted); }
+
+  .mp-action-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.15s;
+  }
+  .mp-action-btn.btn-pull {
+    background: #E7EAF6;
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+  .mp-action-btn.btn-pull:hover { background: #d4d9ed; }
+  .mp-action-btn.btn-remove {
+    background: #FFE6E9;
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .mp-action-btn.btn-remove:hover { background: #ffd0d5; }
+  .mp-action-btn.btn-add {
+    background: #E8F7D4;
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .mp-action-btn.btn-add:hover { background: #d4efc0; }
+  .mp-action-btn:disabled { opacity: 0.4; cursor: wait; }
+
+  /* Component type badges */
+  .tag-command { background: #E7EAF6; color: var(--blue); }
+  .tag-agent { background: #E8F7D4; color: var(--green); }
+  .tag-hook { background: #FEEDB4; color: #8B5E00; }
+  .tag-mcp { background: #F2E7FA; color: var(--purple); }
+
+  /* Model badge */
+  .model-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+  .model-opus { background: #F2E7FA; color: var(--purple); }
+  .model-sonnet { background: #E7EAF6; color: var(--blue); }
+  .model-haiku { background: #E8F7D4; color: var(--green); }
+
+  /* Component rows */
+  .component-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px 5px 38px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    transition: background 0.1s;
+    cursor: pointer;
+    flex-wrap: wrap;
+  }
+  .component-row:hover { background: var(--surface-hover); }
+  .component-row.component-expanded { background: var(--surface-hover); }
+  .component-row.component-disabled .component-row-name { color: var(--text-muted); text-decoration: line-through; }
+  .component-row.component-disabled .component-row-desc { color: var(--border-light); }
+
+  .component-check {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid #999;
+    border-radius: 3px;
+    background: var(--surface);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .component-check:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .component-check:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0px;
+    width: 4px;
+    height: 8px;
+    border: solid #fff;
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+  }
+
+  .component-detail {
+    display: none;
+    width: 100%;
+    margin: 4px 0 4px 0;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    word-break: break-word;
+  }
+  .component-expanded .component-detail { display: block; }
+  .component-row-name {
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .component-row-desc {
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+  .component-row-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  /* Component section header */
+  .component-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 4px 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+
+  /* Inline error display */
+  .inline-error {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--red);
+    padding: 4px 8px;
+    margin: 2px 0 2px 38px;
+    background: #FFE6E9;
+    border-radius: 3px;
+    border: 1px solid #f5c6cb;
+  }
+
+  /* Marketplace health warning */
+  .mp-row-warning {
+    font-size: 10px;
+    color: var(--yellow);
+  }
+
+  /* Unscanned skills expander */
+  .unscanned-section { margin-left: 16px; margin-top: 4px; }
+  .unscanned-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .unscanned-header:hover .unscanned-label { color: var(--text); }
+  .unscanned-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: color 0.15s;
+  }
+  .unscanned-chevron {
+    color: var(--text-muted);
+    font-size: 8px;
+    transition: transform 0.15s;
+    width: 12px;
+    text-align: center;
+  }
+  .unscanned-section.collapsed .unscanned-chevron { transform: rotate(-90deg); }
+  .unscanned-section.collapsed .unscanned-body { display: none; }
+
+  /* Version badges */
+  .version-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .version-current {
+    background: #F0F0F0;
+    color: var(--text-muted);
+  }
+  .version-outdated {
+    background: #FFF8E1;
+    color: #8B5E00;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .version-outdated:hover {
+    background: #FFECB3;
+  }
+  .version-upgrade-icon {
+    font-weight: 700;
+    font-size: 11px;
+  }
+
+  .move-skill-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid var(--green);
+    background: #E8F7D4;
+    color: var(--green);
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .move-skill-btn:hover { background: #d4efc0; }
+  .move-skill-btn:disabled { opacity: 0.4; cursor: wait; }
+
+  /* Custom modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: modalFadeIn 0.15s;
+  }
+  @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px 20px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+  }
+  .modal-msg {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+    margin-bottom: 20px;
+    word-break: break-word;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .modal-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    transition: all 0.15s;
+  }
+  .modal-btn:hover { background: var(--surface-hover); }
+  .modal-btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .modal-btn-primary:hover { background: var(--accent-dim); }
+  .modal-btn-danger {
+    background: var(--red);
+    border-color: var(--red);
+    color: #fff;
+  }
+  .modal-btn-danger:hover { background: #b8001e; }
+
+  /* Custom tooltips */
+  [data-tooltip] {
+    position: relative;
+  }
+  [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    background: var(--text);
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    line-height: 1.5;
+    padding: 6px 10px;
+    border-radius: 5px;
+    white-space: pre-wrap;
+    max-width: 320px;
+    width: max-content;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 500;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  [data-tooltip]:hover::after {
+    opacity: 1;
+  }
+  /* Tooltip on left-aligned elements should not overflow left */
+  .skill-dot[data-tooltip]::after,
+  .skill-shadow-icon[data-tooltip]::after {
+    left: 0;
+    transform: none;
+  }
+
+  /* Plugin detail panel */
+  .plugin-detail {
+    display: none;
+    padding: 12px 16px;
+    margin: 4px 16px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+  .plugin.plugin-expanded .plugin-detail { display: block; }
+  .plugin.plugin-expanded .plugin-header { background: var(--surface-hover); border-radius: var(--radius); }
+
+  /* Hidden by filter */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1><span>//</span> skill-manager</h1>
+    <span class="subtitle">Claude Code skill inventory</span>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="filters">
+    <button class="filter-btn active" data-filter="all">All Installed</button>
+    <button class="filter-btn" data-filter="available">Available</button>
+    <button class="filter-btn" data-filter="duplicates">Duplicates</button>
+    <button class="filter-btn" data-filter="issues">Issues</button>
+    <button class="filter-btn" data-filter="stale">Updates</button>
+    <button class="filter-btn" data-filter="marketplaces">Marketplaces</button>
+    <input type="text" class="search" id="search" placeholder="Search skills...">
+    <button class="check-updates-btn" id="checkUpdatesBtn" onclick="installUpdates()">Install updates</button>
+  </div>
+
+  <div id="updateBanner"></div>
+
+  <div id="content">
+    <div class="loading">Loading skill data</div>
+  </div>
+</div>
+
+<script>
+let DATA = null;
+let activeFilter = 'all';
+
+// --- Custom modal system ---
+function showModal(msg, {confirm: isConfirm = false, danger = false} = {}) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const btnClass = danger ? 'modal-btn-danger' : 'modal-btn-primary';
+    overlay.innerHTML = `<div class="modal-box">
+      <div class="modal-msg">${msg.replace(/\n/g, '<br>')}</div>
+      <div class="modal-actions">
+        ${isConfirm ? '<button class="modal-btn" data-action="cancel">Cancel</button>' : ''}
+        <button class="modal-btn ${btnClass}" data-action="ok">${isConfirm ? 'Confirm' : 'OK'}</button>
+      </div>
+    </div>`;
+    overlay.addEventListener('click', e => {
+      const action = e.target.dataset.action;
+      if (action === 'ok') { overlay.remove(); resolve(true); }
+      else if (action === 'cancel') { overlay.remove(); resolve(false); }
+      else if (e.target === overlay) { overlay.remove(); resolve(false); }
+    });
+    overlay.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { overlay.remove(); resolve(false); }
+      if (e.key === 'Enter') { overlay.remove(); resolve(true); }
+    });
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-action="ok"]').focus();
+  });
+}
+function modalAlert(msg) { return showModal(msg); }
+function modalConfirm(msg, {danger = false} = {}) { return showModal(msg, {confirm: true, danger}); }
+
+async function fetchData() {
+  const res = await fetch('/api/skills');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
+}
+
+function renderStats(data) {
+  const el = document.getElementById('stats');
+  const s = data.stats;
+  const pct = s.budget_pct;
+  const budgetClass = pct > 100 ? 'budget-over' : pct > 70 ? 'budget-warn' : 'budget-ok';
+  const budgetColor = pct > 100 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)';
+  const fillWidth = Math.min(pct, 100);
+
+  el.innerHTML = `
+    <div class="stat">
+      <span class="stat-value">${s.loaded_files}</span>
+      <span class="stat-label">loaded</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">${s.unique_loaded}</span>
+      <span class="stat-label">unique</span>
+    </div>
+    <div class="stat ${s.duplicate_copies > 0 ? 'stat-warn' : ''}">
+      <span class="stat-value">${s.duplicate_copies}</span>
+      <span class="stat-label">duplicates</span>
+    </div>
+    ${s.total_issues > 0 ? `<div class="stat stat-warn">
+      <span class="stat-value">${s.total_issues}</span>
+      <span class="stat-label">issues</span>
+    </div>` : ''}
+    ${s.missing_plugins > 0 ? `<div class="stat stat-warn">
+      <span class="stat-value">${s.missing_plugins}</span>
+      <span class="stat-label">missing</span>
+    </div>` : ''}
+    ${s.total_commands > 0 ? `<div class="stat">
+      <span class="stat-value">${s.total_commands}</span>
+      <span class="stat-label">commands</span>
+    </div>` : ''}
+    ${s.total_agents > 0 ? `<div class="stat">
+      <span class="stat-value">${s.total_agents}</span>
+      <span class="stat-label">agents</span>
+    </div>` : ''}
+    ${s.total_hooks > 0 ? `<div class="stat">
+      <span class="stat-value">${s.total_hooks}</span>
+      <span class="stat-label">hooks</span>
+    </div>` : ''}
+    ${s.total_mcp_servers > 0 ? `<div class="stat">
+      <span class="stat-value">${s.total_mcp_servers}</span>
+      <span class="stat-label">mcp servers</span>
+    </div>` : ''}
+    <div class="budget-bar-wrap">
+      <span class="budget-text" style="color:${budgetColor}">${s.total_desc_chars.toLocaleString()} / ${s.budget.toLocaleString()} chars</span>
+      <div class="budget-bar">
+        <div class="budget-bar-fill ${budgetClass}" style="width:${fillWidth}%"></div>
+      </div>
+      <span class="budget-text" style="color:${budgetColor}">${pct}%${s.budget_source !== 'default' ? ` (${s.budget_source})` : ''}</span>
+    </div>
+  `;
+}
+
+// Returns array of {severity: 'red'|'yellow', message: string}
+function skillProblems(skill) {
+  const problems = [];
+  const isUnloaded = skill.loaded === false;
+
+  // Validation issues
+  if (skill.validation_issues && skill.validation_issues.length > 0) {
+    for (const issue of skill.validation_issues) {
+      if (issue === 'no_frontmatter') {
+        problems.push({severity: 'red', message: 'Missing YAML frontmatter block. Claude Code may not load this skill correctly.'});
+      } else if (issue === 'no_name') {
+        problems.push({severity: 'yellow', message: "Missing 'name' field in frontmatter. The directory name is used as a fallback."});
+      } else if (issue === 'no_description') {
+        problems.push({severity: 'yellow', message: "Missing 'description' field in frontmatter. Claude Code uses the first paragraph of the body instead."});
+      } else {
+        problems.push({severity: 'yellow', message: issue});
+      }
+    }
+  }
+
+  // Overridden duplicate (only flag as issue if still enabled — disabled = intentional)
+  if (skill.is_duplicate && !skill.is_winner && skill.enabled) {
+    const winner = skill.shadowed_by || 'a higher-priority copy';
+    problems.push({
+      severity: 'yellow',
+      message: `This copy is overridden by:\n${winner}\n\nThe higher-priority copy takes precedence. This copy still consumes budget but is never invoked.`
+    });
+  }
+
+  return problems;
+}
+
+function dotClass(problems) {
+  if (problems.some(p => p.severity === 'red')) return 'dot-red';
+  if (problems.some(p => p.severity === 'yellow')) return 'dot-yellow';
+  return 'dot-none';
+}
+
+function statusLabel(skill) {
+  if (skill.loaded === false) return 'Not loaded';
+  if (!skill.enabled) return 'Disabled';
+  if (skill.is_duplicate && !skill.is_winner) return 'Overridden';
+  return 'Active';
+}
+
+function typeLabel(skill) {
+  if (skill.source_type === 'command') return 'Command';
+  if (skill.disable_model_invocation) return 'Skill (manual only)';
+  if (!skill.user_invocable) return 'Skill (background)';
+  return 'Skill';
+}
+
+function timeAgo(days) {
+  if (days < 0) return 'unknown';
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  if (days < 60) return '1 month ago';
+  return `${Math.floor(days / 30)} months ago`;
+}
+
+function renderFrontmatter(skill) {
+  const fm = skill.frontmatter;
+  if (!fm || Object.keys(fm).length === 0) return '<div style="margin-top:8px;font-size:11px;color:var(--text-muted);font-style:italic">No frontmatter</div>';
+  const rows = Object.entries(fm).map(([k, v]) => {
+    const val = String(v);
+    const truncated = val.length > 200 ? val.slice(0, 200) + '...' : val;
+    return `<tr><td style="padding:2px 12px 2px 0;color:var(--text-muted);white-space:nowrap;vertical-align:top;font-weight:500">${esc(k)}</td><td style="padding:2px 0;color:var(--text-dim);word-break:break-word">${esc(truncated)}</td></tr>`;
+  }).join('');
+  return `<table style="margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11px;border-collapse:collapse">${rows}</table>`;
+}
+
+function renderSkillDetail(skill) {
+  const problems = skillProblems(skill);
+  const chars = skill.desc_chars || 0;
+  const absPath = skill.abs_path || '';
+
+  let warningsHtml = '';
+  for (const p of problems) {
+    const cls = p.severity === 'red' ? 'warn-red' : 'warn-yellow';
+    const icon = p.severity === 'red' ? '!!' : '!!';
+    warningsHtml += `<div class="detail-warning ${cls}">${esc(p.message).replace(/\n/g, '<br>')}</div>`;
+  }
+
+  // Subagent info (only for non-local plugin skills)
+  let subagentHtml = '';
+  if (skill.loaded !== false && skill.source_type === 'skill') {
+    if (skill.has_personal_copy) {
+      subagentHtml = `<div class="detail-warning warn-green">Subagent accessible &mdash; a personal copy exists in ~/.claude/skills/</div>`;
+    } else if (absPath && !absPath.includes('/.claude/skills/')) {
+      subagentHtml = `<div class="detail-warning warn-dim">Not available to subagents. Copy to ~/.claude/skills/ to make it accessible.</div>`;
+    }
+  }
+
+  return `
+    <div class="skill-detail">
+      <div class="detail-row">
+        <span class="detail-value"><strong>Status:</strong> ${statusLabel(skill)}</span>
+        <span class="detail-sep">|</span>
+        <span class="detail-value"><strong>Type:</strong> ${typeLabel(skill)}</span>
+        <span class="detail-sep">|</span>
+        <span class="detail-value"><strong>Budget cost:</strong> ${chars.toLocaleString()} chars</span>
+        <span class="detail-sep">|</span>
+        <span class="detail-value"><strong>Modified:</strong> ${timeAgo(skill.age_days)}</span>
+        ${skill.has_update === true ? `<span class="detail-sep">|</span><span class="detail-value" style="color:var(--yellow)"><strong>Update available:</strong> ${esc(skill.marketplace_version)}</span>` : skill.has_update === false ? `<span class="detail-sep">|</span><span class="detail-value" style="color:var(--green)"><strong>Up to date</strong></span>` : ''}
+      </div>
+      <div class="detail-path">${esc(absPath)}</div>
+      ${renderFrontmatter(skill)}
+      ${warningsHtml}
+      ${subagentHtml}
+    </div>
+  `;
+}
+
+function renderSkill(skill) {
+  const isUnloaded = skill.loaded === false;
+  const checked = skill.enabled && !isUnloaded ? 'checked' : '';
+  let extraClass = '';
+  if (isUnloaded) extraClass += ' skill-unloaded';
+  else if (!skill.enabled) extraClass += ' skill-disabled';
+  if (skill.is_duplicate && !skill.is_winner) extraClass += ' skill-shadowed';
+
+  const problems = skillProblems(skill);
+  const dot = dotClass(problems);
+  const hasProblems = problems.length > 0;
+  const hasUpdate = skill.has_update === true;
+  const isDuplicate = skill.is_duplicate || false;
+  const isShadowed = skill.is_duplicate && !skill.is_winner;
+  const dotTooltip = problems.length > 0 ? problems.map(p => p.message).join('\n') : '';
+  const shadowTooltip = isShadowed ? `Shadowed by: ${skill.shadowed_by || 'a higher-priority copy'}` : '';
+
+  return `
+    <div class="skill${extraClass}" data-name="${skill.name.toLowerCase()}" data-desc="${(skill.description || '').toLowerCase()}" data-source-type="${skill.source_type || 'skill'}" data-has-issues="${hasProblems}" data-has-update="${hasUpdate}" data-is-duplicate="${isDuplicate}" data-loaded="${skill.loaded !== false}">
+      <div class="skill-icons">
+        ${dot !== 'dot-none' ? `<div class="skill-dot ${dot}" ${dotTooltip ? `data-tooltip="${esc(dotTooltip)}"` : ''}></div>` : ''}
+        ${isShadowed ? `<div class="skill-shadow-icon" data-tooltip="${esc(shadowTooltip)}"></div>` : ''}
+      </div>
+      <input type="checkbox" class="skill-check" data-path="${esc(skill.path)}" ${checked}>
+      <div class="skill-summary">
+        <span class="skill-name">${esc(skill.name)}</span>
+        ${skill.disable_model_invocation ? `<span class="mp-tag tag-command" style="cursor:pointer" data-tooltip="Only invocable via slash command — agents cannot trigger this skill automatically" data-abs-path="${esc(skill.abs_path)}" onclick="event.stopPropagation(); toggleModelInvocation(this)">manual</span>` : ''}
+        <span class="skill-desc">${esc(skill.description || '')}</span>
+        ${skill.loaded === false ? `<button class="move-skill-btn" data-abs-path="${esc(skill.abs_path)}" data-skill-name="${esc(skill.name)}" onclick="event.stopPropagation(); moveSkillToScanned(this)" data-tooltip="Copy to ~/.claude/skills/ so Claude Code can discover it">add to skills/</button>` : ''}
+      </div>
+      ${renderSkillDetail(skill)}
+    </div>
+  `;
+}
+
+function renderAvailableSkill(skill) {
+  return `
+    <div class="skill" data-name="${skill.name.toLowerCase()}" data-desc="${(skill.description || '').toLowerCase()}" data-source-type="${skill.source_type || 'skill'}">
+      <div class="skill-dot dot-none"></div>
+      <div style="width:32px"></div>
+      <div class="skill-summary">
+        <span class="skill-name" style="color:var(--text-muted)">${esc(skill.name)}</span>
+        <span class="skill-desc">${esc(skill.description || '')}</span>
+      </div>
+    </div>
+  `;
+}
+
+function sourceTag(source) {
+  const tags = {
+    'plugin': 'tag-cache',
+    'local': 'tag-local',
+    'local-plugin': 'tag-direct',
+  };
+  const labels = {
+    'plugin': 'plugin',
+    'local': 'local',
+    'local-plugin': 'local plugin',
+  };
+  return `<span class="mp-tag ${tags[source] || 'tag-cache'}">${labels[source] || source}</span>`;
+}
+
+function renderInstalledGroup(group) {
+  const allEnabled = group.skills.every(s => s.enabled);
+  const noneEnabled = group.skills.every(s => !s.enabled);
+  const pluginChecked = noneEnabled ? '' : 'checked';
+  const pluginIndet = (!allEnabled && !noneEnabled) ? 'data-indeterminate="true"' : '';
+
+  let uninstallBtn = '';
+  if (group.plugin_id) {
+    uninstallBtn = `<button class="uninstall-btn" data-plugin-id="${esc(group.plugin_id)}" onclick="event.stopPropagation(); uninstallPlugin(this)">uninstall</button>`;
+  } else if (group.source === 'local-plugin') {
+    uninstallBtn = `<button class="uninstall-btn" data-plugin-name="${esc(group.name)}" onclick="event.stopPropagation(); removeLocalPlugin(this)">remove</button>`;
+  }
+
+  let versionBadge = '';
+  if (group.version && group.version !== 'unknown') {
+    if (group.has_update === true) {
+      versionBadge = `<span class="version-badge version-outdated" data-tooltip="Update available: v${esc(group.marketplace_version)} (click to upgrade)" data-plugin-id="${esc(group.plugin_id || '')}" onclick="event.stopPropagation(); upgradePlugin(this)">v${esc(group.version)} <span class="version-upgrade-icon">&#8593;</span></span>`;
+    } else {
+      versionBadge = `<span class="version-badge version-current">v${esc(group.version)}</span>`;
+    }
+  }
+
+  const componentSummary = (() => {
+    const cc = group.component_counts || {};
+    const parts = [];
+    if (cc.skills) parts.push(`${cc.skills} skill${cc.skills !== 1 ? 's' : ''}`);
+    if (cc.commands) parts.push(`${cc.commands} cmd${cc.commands !== 1 ? 's' : ''}`);
+    if (cc.agents) parts.push(`${cc.agents} agent${cc.agents !== 1 ? 's' : ''}`);
+    if (cc.hooks) parts.push(`${cc.hooks} hook${cc.hooks !== 1 ? 's' : ''}`);
+    if (cc.mcp_servers) parts.push(`${cc.mcp_servers} mcp`);
+    return parts.join(', ') || 'empty';
+  })();
+
+  const detailRows = [
+    group.install_path ? `<div><strong style="color:var(--text)">Install path:</strong> <span style="font-family:'JetBrains Mono',monospace;word-break:break-all">${esc(group.install_path)}</span></div>` : '',
+    group.plugin_id ? `<div><strong>Plugin ID:</strong> ${esc(group.plugin_id)}</div>` : '',
+    group.source ? `<div><strong>Source:</strong> ${esc(group.source)}</div>` : '',
+    group.version && group.version !== 'unknown' ? `<div><strong>Version:</strong> ${esc(group.version)}</div>` : '',
+    group.marketplace ? `<div><strong>Marketplace:</strong> ${esc(group.marketplace)}</div>` : '',
+    group.marketplace_version ? `<div><strong>Latest version:</strong> ${esc(group.marketplace_version)}</div>` : '',
+    group.repo_url ? `<div><strong>Repo:</strong> <a href="${esc(group.repo_url)}" target="_blank" style="color:var(--blue);text-decoration:none">${esc(group.repo_url)}</a></div>` : '',
+    `<div><strong>Components:</strong> ${esc(componentSummary)}</div>`,
+  ].filter(Boolean).join('\n        ');
+
+  return `
+    <div class="plugin" data-installed="true" data-plugin="${esc(group.name)}">
+      <div class="plugin-header">
+        <input type="checkbox" class="plugin-check" ${pluginChecked} ${pluginIndet}>
+        <span class="plugin-chevron" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('collapsed')">&#9660;</span>
+        <span class="plugin-name" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('plugin-expanded')">${esc(group.name)}</span>
+        ${versionBadge}
+        ${sourceTag(group.source)}
+        <span class="plugin-skill-count">${(() => {
+          const loaded = group.skills.filter(s => s.loaded !== false).length;
+          const total = group.skills.length;
+          return loaded === total ? `${total} skill${total !== 1 ? 's' : ''}` : `${loaded}/${total} loaded`;
+        })()}</span>
+        ${uninstallBtn}
+      </div>
+      <div class="plugin-detail">
+        ${detailRows}
+      </div>
+      <div class="plugin-body">
+        ${group.skills.filter(s => s.source_type !== 'command' && s.loaded !== false).map(renderSkill).join('')}
+        ${(() => {
+          const unloaded = group.skills.filter(s => s.source_type !== 'command' && s.loaded === false);
+          if (unloaded.length === 0) return '';
+          return `<div class="unscanned-section collapsed">
+            <div class="unscanned-header" onclick="this.parentElement.classList.toggle('collapsed')">
+              <span class="unscanned-chevron">&#9660;</span>
+              <span class="unscanned-label">${unloaded.length} unscanned skill${unloaded.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="unscanned-body">
+              ${unloaded.map(renderSkill).join('')}
+            </div>
+          </div>`;
+        })()}
+        ${renderComponentSection('Commands', 'tag-command', group.skills.filter(s => s.source_type === 'command'), renderCommandRow)}
+        ${renderComponentSection('Agents', 'tag-agent', group.agents, renderAgentRow)}
+        ${renderComponentSection('Hooks', 'tag-hook', group.hooks, renderHookRow)}
+        ${renderComponentSection('MCP Servers', 'tag-mcp', group.mcp_servers, renderMcpServerRow)}
+      </div>
+    </div>
+  `;
+}
+
+function renderAvailableGroup(plugin) {
+  const availDetailRows = [
+    `<div><strong>Plugin ID:</strong> ${esc(plugin.plugin_id)}</div>`,
+    `<div><strong>Marketplace:</strong> ${esc(plugin.marketplace)}</div>`,
+    plugin.repo_url ? `<div><strong>Repo:</strong> <a href="${esc(plugin.repo_url)}" target="_blank" style="color:var(--blue);text-decoration:none">${esc(plugin.repo_url)}</a></div>` : '',
+    `<div><strong>Skills:</strong> ${plugin.skill_count}</div>`,
+  ].filter(Boolean).join('\n        ');
+
+  return `
+    <div class="plugin" data-installed="false" data-plugin="${esc(plugin.name)}">
+      <div class="plugin-header">
+        <div style="width:16px"></div>
+        <span class="plugin-chevron" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('collapsed')">&#9660;</span>
+        <span class="plugin-name" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('plugin-expanded')">${esc(plugin.name)}</span>
+        <span class="mp-tag tag-marketplace">${esc(plugin.marketplace)}</span>
+        <span class="plugin-skill-count">${plugin.skill_count} skill${plugin.skill_count !== 1 ? 's' : ''}</span>
+        <button class="install-btn" data-plugin-id="${esc(plugin.plugin_id)}" onclick="event.stopPropagation(); installPlugin(this)">install</button>
+      </div>
+      <div class="plugin-detail">
+        ${availDetailRows}
+      </div>
+      <div class="plugin-body">
+        ${plugin.skills.map(renderAvailableSkill).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// --- Component render functions ---
+
+function modelBadge(model) {
+  if (!model || model === 'inherit') return '';
+  const cls = {opus: 'model-opus', sonnet: 'model-sonnet', haiku: 'model-haiku'}[model] || '';
+  return `<span class="model-badge ${cls}">${esc(model)}</span>`;
+}
+
+function renderAgentRow(agent) {
+  const toolsInfo = agent.tools_count ? `${agent.tools_count} tools` : '';
+  const toolsList = agent.tools && agent.tools.length ? agent.tools.map(t => esc(t)).join(', ') : '';
+  const skillsInfo = agent.skills ? esc(agent.skills) : '';
+  const isEnabled = agent.enabled !== false;
+  return `
+    <div class="component-row ${!isEnabled ? 'component-disabled' : ''}" data-component-type="agent" data-component-name="${esc(agent.name.toLowerCase())}">
+      <input type="checkbox" class="component-check" data-abs-path="${esc(agent.abs_path)}" ${isEnabled ? 'checked' : ''} onclick="event.stopPropagation(); toggleComponent(this)">
+      <span class="mp-tag tag-agent">agent</span>
+      <span class="component-row-name">${esc(agent.name)}</span>
+      ${modelBadge(agent.model)}
+      <span class="component-row-desc">${esc(agent.description || '')}</span>
+      <span class="component-row-meta">${toolsInfo}</span>
+      <div class="component-detail">
+        ${agent.description ? `<div style="margin-bottom:6px">${esc(agent.description)}</div>` : ''}
+        ${agent.model ? `<div><strong>Model:</strong> ${esc(agent.model)}</div>` : ''}
+        ${toolsList ? `<div><strong>Tools:</strong> ${toolsList}</div>` : ''}
+        ${skillsInfo ? `<div><strong>Skills:</strong> ${skillsInfo}</div>` : ''}
+        ${agent.abs_path ? `<div style="margin-top:6px;font-size:10px;color:var(--text-muted)">${esc(agent.abs_path)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderCommandRow(cmd) {
+  const argHint = cmd.frontmatter && cmd.frontmatter['argument-hint'] ? ` ${cmd.frontmatter['argument-hint']}` : '';
+  const invocation = `/${esc(cmd.name)}${esc(argHint)}`;
+  const model = cmd.frontmatter && cmd.frontmatter.model ? cmd.frontmatter.model : '';
+  const noModel = cmd.disable_model_invocation;
+  const chars = cmd.desc_chars || 0;
+  const isEnabled = cmd.enabled !== false;
+  return `
+    <div class="component-row ${!isEnabled ? 'component-disabled' : ''}" data-component-type="command" data-component-name="${esc(cmd.name.toLowerCase())}">
+      <input type="checkbox" class="component-check" data-abs-path="${esc(cmd.abs_path)}" ${isEnabled ? 'checked' : ''} onclick="event.stopPropagation(); toggleComponent(this)">
+      <span class="mp-tag tag-command">cmd</span>
+      <span class="component-row-name">${invocation}</span>
+      ${noModel ? `<span class="mp-tag tag-command" style="cursor:pointer" data-tooltip="Only invocable via slash command — agents cannot trigger this skill automatically" data-abs-path="${esc(cmd.abs_path)}" onclick="event.stopPropagation(); toggleModelInvocation(this)">manual</span>` : ''}
+      ${modelBadge(model)}
+      <span class="component-row-desc">${esc(cmd.description || '')}</span>
+      <div class="component-detail">
+        ${cmd.description ? `<div style="margin-bottom:6px">${esc(cmd.description)}</div>` : ''}
+        <div><strong>Invocation:</strong> ${invocation}</div>
+        ${model ? `<div><strong>Model:</strong> ${esc(model)}</div>` : ''}
+        <div><strong>Budget cost:</strong> ${chars.toLocaleString()} chars</div>
+        ${noModel ? '<div><strong>Model invocation:</strong> disabled (manual only)</div>' : ''}
+        ${cmd.abs_path ? `<div style="margin-top:6px;font-size:10px;color:var(--text-muted)">${esc(cmd.abs_path)}</div>` : ''}
+        ${renderFrontmatter(cmd)}
+      </div>
+    </div>
+  `;
+}
+
+function renderHookRow(hook) {
+  const entryBadge = {command: 'tag-command', prompt: 'tag-hook', agent: 'tag-agent'}[hook.entry_type] || 'tag-hook';
+  const detail = hook.command || hook.agent || hook.prompt || '';
+  const truncDetail = detail.length > 60 ? detail.slice(0, 60) + '...' : detail;
+  const timeoutStr = hook.timeout ? ` (${hook.timeout}ms)` : '';
+  return `
+    <div class="component-row" data-component-type="hook" data-component-name="${esc(hook.event_type.toLowerCase())}">
+      <span class="mp-tag tag-hook">hook</span>
+      <span class="component-row-name">${esc(hook.event_type)}</span>
+      <span style="color:var(--text-muted)">${esc(hook.matcher)}</span>
+      <span class="mp-tag ${entryBadge}">${esc(hook.entry_type)}</span>
+      <span class="component-row-desc" title="${esc(detail)}">${esc(truncDetail)}${timeoutStr}</span>
+      <div class="component-detail">
+        <div><strong>Event:</strong> ${esc(hook.event_type)}</div>
+        <div><strong>Matcher:</strong> ${esc(hook.matcher)}</div>
+        <div><strong>Type:</strong> ${esc(hook.entry_type)}</div>
+        ${hook.command ? `<div><strong>Command:</strong> ${esc(hook.command)}</div>` : ''}
+        ${hook.prompt ? `<div><strong>Prompt:</strong> ${esc(hook.prompt)}</div>` : ''}
+        ${hook.agent ? `<div><strong>Agent:</strong> ${esc(hook.agent)}</div>` : ''}
+        ${hook.timeout ? `<div><strong>Timeout:</strong> ${hook.timeout}ms</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderMcpServerRow(server) {
+  const typeBadge = server.type === 'http' || server.type === 'sse' ? 'tag-command' : 'tag-mcp';
+  const detail = server.url || (server.command ? `${server.command} ${(server.args || []).join(' ')}`.trim() : '');
+  const envInfo = server.env_keys && server.env_keys.length ? `env: ${server.env_keys.join(', ')}` : '';
+  return `
+    <div class="component-row" data-component-type="mcp" data-component-name="${esc(server.name.toLowerCase())}">
+      <span class="mp-tag tag-mcp">mcp</span>
+      <span class="component-row-name">${esc(server.name)}</span>
+      <span class="mp-tag ${typeBadge}">${esc(server.type)}</span>
+      <span class="component-row-desc" title="${esc(detail)}">${esc(detail)}</span>
+      ${envInfo ? `<span class="component-row-meta">${esc(envInfo)}</span>` : ''}
+      <span class="component-row-meta" style="font-size:9px;opacity:0.6">${esc(server.source)}</span>
+      <div class="component-detail">
+        <div><strong>Name:</strong> ${esc(server.name)}</div>
+        <div><strong>Type:</strong> ${esc(server.type)}</div>
+        ${server.command ? `<div><strong>Command:</strong> ${esc(server.command)} ${esc((server.args || []).join(' '))}</div>` : ''}
+        ${server.url ? `<div><strong>URL:</strong> ${esc(server.url)}</div>` : ''}
+        ${envInfo ? `<div><strong>Env:</strong> ${esc(server.env_keys.join(', '))}</div>` : ''}
+        <div><strong>Source:</strong> ${esc(server.source)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderComponentSection(label, tagClass, items, renderFn) {
+  if (!items || items.length === 0) return '';
+  return `
+    <div class="component-section">
+      <div class="component-section-header">
+        <span class="mp-tag ${tagClass}">${esc(label)}</span>
+        <span>${items.length}</span>
+      </div>
+      ${items.map(renderFn).join('')}
+    </div>
+  `;
+}
+
+// --- Marketplace registry functions ---
+let MP_DATA = null;
+
+async function fetchMarketplaces() {
+  const res = await fetch('/api/marketplaces');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function mpSourceTag(type) {
+  const cls = {git: 'tag-git', github: 'tag-github', directory: 'tag-dir'}[type] || 'tag-cache';
+  return `<span class="mp-tag ${cls}">${esc(type)}</span>`;
+}
+
+function renderMarketplaceRow(mp) {
+  const pullBtn = mp.has_git
+    ? `<button class="mp-action-btn btn-pull" data-mp-name="${esc(mp.name)}" onclick="event.stopPropagation(); updateMarketplace(this)">pull</button>`
+    : '';
+  const gitInfo = mp.branch && mp.short_sha ? `${mp.branch}@${mp.short_sha}` : '';
+  const healthWarning = !mp.exists ? '<span class="mp-row-warning">dir not found</span>' : '';
+  return `
+    <div class="mp-row" data-mp-name="${esc(mp.name)}">
+      ${mpSourceTag(mp.source_type)}
+      <span class="mp-row-name">${esc(mp.name)}</span>
+      ${healthWarning}
+      <span class="mp-row-url" title="${esc(mp.url)}">${esc(mp.url)}</span>
+      <span class="mp-row-meta">
+        <span>${mp.plugin_count} plugin${mp.plugin_count !== 1 ? 's' : ''}</span>
+        ${gitInfo ? `<span>${esc(gitInfo)}</span>` : ''}
+        ${mp.date_short ? `<span>${esc(mp.date_short)}</span>` : ''}
+      </span>
+      <div class="mp-row-actions">
+        ${pullBtn}
+        <button class="mp-action-btn btn-remove" data-mp-name="${esc(mp.name)}" onclick="event.stopPropagation(); removeMarketplace(this)">remove</button>
+      </div>
+    </div>
+    <div class="inline-error hidden" data-mp-error="${esc(mp.name)}"></div>
+  `;
+}
+
+function renderMarketplacesSection(mpData) {
+  const totalPlugins = mpData.reduce((a, m) => a + m.plugin_count, 0);
+  const pullAllBtn = mpData.some(m => m.has_git)
+    ? `<button class="mp-action-btn btn-pull" style="margin-left:auto" onclick="updateAllMarketplaces(this)">pull all</button>`
+    : '';
+  return `
+    <div class="marketplace section collapsed" data-source="marketplaces" data-no-auto-hide="true">
+      <div class="marketplace-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="mp-chevron">&#9660;</span>
+        <span class="mp-name">Marketplaces</span>
+        <span class="mp-tag tag-marketplace">registries</span>
+        <span class="mp-counts">${mpData.length} registered &middot; ${totalPlugins} total plugins</span>
+        ${pullAllBtn}
+      </div>
+      <div class="marketplace-body">
+        ${mpData.map(renderMarketplaceRow).join('')}
+        <div class="mp-add-row">
+          <input type="text" class="mp-add-input" id="mpAddInput" placeholder="git URL, owner/repo, or /path/to/dir">
+          <button class="mp-action-btn btn-add" onclick="addMarketplace()">add</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function addMarketplace() {
+  const input = document.getElementById('mpAddInput');
+  const url = input.value.trim();
+  if (!url) return;
+  input.disabled = true;
+  const addBtn = input.nextElementSibling;
+  addBtn.disabled = true;
+  addBtn.textContent = 'adding...';
+  try {
+    const res = await fetch('/api/marketplace-add', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      addBtn.textContent = 'done!';
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      // Show error inline after the add row
+      const addRow = input.closest('.mp-add-row');
+      let errEl = addRow.nextElementSibling;
+      if (!errEl || !errEl.classList.contains('inline-error')) {
+        errEl = document.createElement('div');
+        errEl.className = 'inline-error';
+        addRow.after(errEl);
+      }
+      errEl.textContent = data.stderr || data.stdout || 'Unknown error';
+      errEl.classList.remove('hidden');
+      addBtn.textContent = 'add'; addBtn.disabled = false; input.disabled = false;
+    }
+  } catch (e) {
+    const addRow = input.closest('.mp-add-row');
+    let errEl = addRow.nextElementSibling;
+    if (!errEl || !errEl.classList.contains('inline-error')) {
+      errEl = document.createElement('div');
+      errEl.className = 'inline-error';
+      addRow.after(errEl);
+    }
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+    addBtn.textContent = 'add'; addBtn.disabled = false; input.disabled = false;
+  }
+}
+
+function showMpError(name, msg) {
+  const el = document.querySelector(`[data-mp-error="${CSS.escape(name)}"]`);
+  if (el) { el.textContent = msg; el.classList.remove('hidden'); }
+}
+
+function hideMpError(name) {
+  const el = document.querySelector(`[data-mp-error="${CSS.escape(name)}"]`);
+  if (el) { el.classList.add('hidden'); }
+}
+
+async function removeMarketplace(btn) {
+  const name = btn.dataset.mpName;
+  if (!await modalConfirm(`Remove marketplace "${name}"?`, {danger: true})) return;
+  btn.disabled = true;
+  btn.textContent = 'removing...';
+  hideMpError(name);
+  try {
+    const res = await fetch('/api/marketplace-remove', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = 'done!';
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showMpError(name, data.stderr || data.stdout || 'Unknown error');
+      btn.textContent = 'remove'; btn.disabled = false;
+    }
+  } catch (e) {
+    showMpError(name, e.message);
+    btn.textContent = 'remove'; btn.disabled = false;
+  }
+}
+
+async function updateMarketplace(btn) {
+  const name = btn.dataset.mpName;
+  btn.disabled = true;
+  btn.textContent = 'pulling...';
+  hideMpError(name);
+  try {
+    const res = await fetch('/api/marketplace-update', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = 'done!';
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      showMpError(name, data.stderr || data.stdout || 'Unknown error');
+      btn.textContent = 'pull'; btn.disabled = false;
+    }
+  } catch (e) {
+    showMpError(name, e.message);
+    btn.textContent = 'pull'; btn.disabled = false;
+  }
+}
+
+async function updateAllMarketplaces(btn) {
+  btn.disabled = true;
+  btn.textContent = 'pulling all...';
+  // Update each marketplace individually for per-row feedback
+  const pullBtns = document.querySelectorAll('.mp-action-btn.btn-pull[data-mp-name]');
+  const names = [...pullBtns].map(b => b.dataset.mpName);
+
+  if (names.length === 0) {
+    btn.textContent = 'pull all'; btn.disabled = false;
+    return;
+  }
+
+  let anyFailed = false;
+  for (const name of names) {
+    const rowBtn = document.querySelector(`.mp-action-btn.btn-pull[data-mp-name="${CSS.escape(name)}"]`);
+    if (rowBtn) { rowBtn.disabled = true; rowBtn.textContent = 'pulling...'; }
+    hideMpError(name);
+    try {
+      const res = await fetch('/api/marketplace-update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name})
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (rowBtn) rowBtn.textContent = 'done!';
+      } else {
+        anyFailed = true;
+        showMpError(name, data.stderr || data.stdout || 'Unknown error');
+        if (rowBtn) { rowBtn.textContent = 'pull'; rowBtn.disabled = false; }
+      }
+    } catch (e) {
+      anyFailed = true;
+      showMpError(name, e.message);
+      if (rowBtn) { rowBtn.textContent = 'pull'; rowBtn.disabled = false; }
+    }
+  }
+
+  if (!anyFailed) {
+    btn.textContent = 'done!';
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    btn.textContent = 'pull all'; btn.disabled = false;
+  }
+}
+
+function renderAll(data, mpData) {
+  const content = document.getElementById('content');
+  let html = '';
+
+  // Missing plugins warning
+  let missingHtml = '';
+  if (data.missing_plugins && data.missing_plugins.length > 0) {
+    missingHtml = data.missing_plugins.map(m => `
+      <div class="missing-plugin">
+        <span class="skill-tag tag-missing">missing</span>
+        <span>${esc(m.name)}</span>
+        <span style="color:var(--text-muted);font-size:10px">${esc(m.plugin_id)} &mdash; directory not found</span>
+        <button class="uninstall-btn" style="margin-left:auto" onclick="removeMissing(this, '${esc(m.plugin_id)}')">remove</button>
+      </div>
+    `).join('');
+  }
+
+  // Installed section
+  html += `<div class="marketplace section" data-source="installed">
+    <div class="marketplace-header" onclick="this.parentElement.classList.toggle('collapsed')">
+      <span class="mp-chevron">&#9660;</span>
+      <span class="mp-name">Installed</span>
+      <span class="mp-tag tag-cache">loaded at startup</span>
+      <span class="mp-counts">${data.installed.length} groups &middot; ${data.stats.loaded_files} skills</span>
+    </div>
+    <div class="marketplace-body">
+      ${missingHtml}
+      ${data.installed.map(renderInstalledGroup).join('')}
+    </div>
+  </div>`;
+
+  // Available section
+  if (data.available.length) {
+    const totalAvail = data.available.reduce((a, p) => a + p.skill_count, 0);
+    html += `<div class="marketplace section" data-source="available">
+      <div class="marketplace-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="mp-chevron">&#9660;</span>
+        <span class="mp-name">Available</span>
+        <span class="mp-tag tag-marketplace">not loaded</span>
+        <span class="mp-counts">${data.available.length} plugins &middot; ${totalAvail} skills</span>
+      </div>
+      <div class="marketplace-body">
+        ${data.available.map(renderAvailableGroup).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Marketplaces section
+  if (mpData && mpData.length > 0) {
+    html += renderMarketplacesSection(mpData);
+  }
+
+  content.innerHTML = html;
+  bindCheckboxes(content);
+  bindRowExpand(content);
+}
+
+function bindRowExpand(content) {
+  content.querySelectorAll('.skill').forEach(row => {
+    row.addEventListener('click', (e) => {
+      // Don't toggle when clicking checkbox
+      if (e.target.classList.contains('skill-check')) return;
+      row.classList.toggle('skill-expanded');
+    });
+  });
+  content.querySelectorAll('.component-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+      // Don't toggle when clicking badge toggles
+      if (e.target.closest('[onclick]')) return;
+      row.classList.toggle('component-expanded');
+    });
+  });
+}
+
+function bindCheckboxes(content) {
+  content.querySelectorAll('.skill-check').forEach(cb => {
+    cb.addEventListener('change', async (e) => {
+      e.stopPropagation(); // prevent row expand
+      const path = cb.dataset.path;
+      const enabled = cb.checked;
+      const row = cb.closest('.skill');
+      row.style.opacity = '0.5';
+      try {
+        await fetch('/api/toggle', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({path, enabled})
+        });
+        row.classList.toggle('skill-disabled', !enabled);
+      } catch (e) {
+        cb.checked = !enabled;
+        modalAlert('Failed to toggle: ' + e.message);
+      }
+      row.style.opacity = '';
+      updatePluginCheckbox(cb.closest('.plugin'));
+    });
+  });
+
+  content.querySelectorAll('.plugin-check').forEach(pcb => {
+    if (pcb.dataset.indeterminate === 'true') {
+      pcb.indeterminate = true;
+      pcb.classList.add('indeterminate');
+    }
+    pcb.addEventListener('change', async () => {
+      const enabled = pcb.checked;
+      pcb.indeterminate = false;
+      pcb.classList.remove('indeterminate');
+      const plugin = pcb.closest('.plugin');
+      const skillCbs = plugin.querySelectorAll('.skill-check');
+      plugin.style.opacity = '0.5';
+      const promises = [];
+      skillCbs.forEach(scb => {
+        if (scb.checked !== enabled) {
+          scb.checked = enabled;
+          scb.closest('.skill').classList.toggle('skill-disabled', !enabled);
+          promises.push(fetch('/api/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: scb.dataset.path, enabled})
+          }));
+        }
+      });
+      await Promise.all(promises);
+      plugin.style.opacity = '';
+    });
+  });
+}
+
+function updatePluginCheckbox(plugin) {
+  if (!plugin) return;
+  const pcb = plugin.querySelector('.plugin-check');
+  if (!pcb) return;
+  const skillCbs = plugin.querySelectorAll('.skill-check');
+  const allChecked = [...skillCbs].every(cb => cb.checked);
+  const noneChecked = [...skillCbs].every(cb => !cb.checked);
+  pcb.checked = !noneChecked;
+  pcb.indeterminate = !allChecked && !noneChecked;
+  pcb.classList.toggle('indeterminate', pcb.indeterminate);
+}
+
+async function installPlugin(btn) {
+  const pluginId = btn.dataset.pluginId;
+  btn.disabled = true;
+  btn.textContent = 'installing...';
+  try {
+    const res = await fetch('/api/install', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({plugin_id: pluginId})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = 'done!';
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      modalAlert('Install failed:\n' + (data.stderr || data.stdout));
+      btn.textContent = 'install'; btn.disabled = false;
+    }
+  } catch (e) {
+    modalAlert('Install error: ' + e.message);
+    btn.textContent = 'install'; btn.disabled = false;
+  }
+}
+
+async function uninstallPlugin(btn) {
+  const pluginId = btn.dataset.pluginId;
+  if (!await modalConfirm(`Uninstall ${pluginId}?`, {danger: true})) return;
+  btn.disabled = true;
+  btn.textContent = 'removing...';
+  try {
+    const res = await fetch('/api/uninstall', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({plugin_id: pluginId})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = 'done!';
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      modalAlert('Uninstall failed:\n' + (data.stderr || data.stdout));
+      btn.textContent = 'uninstall'; btn.disabled = false;
+    }
+  } catch (e) {
+    modalAlert('Uninstall error: ' + e.message);
+    btn.textContent = 'uninstall'; btn.disabled = false;
+  }
+}
+
+async function removeMissing(btn, pluginId) {
+  if (!await modalConfirm(`Remove stale entry for ${pluginId}?`, {danger: true})) return;
+  btn.disabled = true;
+  btn.textContent = 'removing...';
+  try {
+    const res = await fetch('/api/remove-missing', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({plugin_id: pluginId})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.closest('.missing-plugin').remove();
+    } else {
+      modalAlert('Failed: ' + (data.error || 'Unknown error'));
+      btn.textContent = 'remove'; btn.disabled = false;
+    }
+  } catch (e) {
+    modalAlert('Error: ' + e.message);
+    btn.textContent = 'remove'; btn.disabled = false;
+  }
+}
+
+async function removeLocalPlugin(btn) {
+  const name = btn.dataset.pluginName;
+  if (!await modalConfirm(`Archive local plugin "${name}"?\n\nIt will be moved to plugins/_archived/, not deleted.`, {danger: true})) return;
+  btn.disabled = true;
+  btn.textContent = 'archiving...';
+  try {
+    const res = await fetch('/api/remove-local-plugin', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = 'done!';
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      modalAlert('Failed: ' + (data.error || 'Unknown error'));
+      btn.textContent = 'remove'; btn.disabled = false;
+    }
+  } catch (e) {
+    modalAlert('Error: ' + e.message);
+    btn.textContent = 'remove'; btn.disabled = false;
+  }
+}
+
+async function installUpdates() {
+  const btn = document.getElementById('checkUpdatesBtn');
+  const banner = document.getElementById('updateBanner');
+  btn.disabled = true;
+  btn.textContent = 'Checking...';
+  banner.innerHTML = '';
+
+  try {
+    // Step 1: Check for updates
+    const res = await fetch('/api/check-updates', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const data = await res.json();
+
+    if (data.errors && data.errors.length > 0) {
+      banner.innerHTML += `<div class="update-banner" style="color:#8B5E00;border-color:#F5A623;background:#FFF8E1;">${data.errors.map(e => esc(e)).join('<br>')}</div>`;
+    }
+
+    if (!data.updates || data.updates.length === 0) {
+      banner.innerHTML = `<div class="update-banner" style="color:var(--green);border-color:var(--green);background:#E8F7D4;">All plugins are up to date.</div>`;
+      setTimeout(() => { banner.innerHTML = ''; }, 4000);
+      btn.textContent = 'Install updates';
+      btn.disabled = false;
+      return;
+    }
+
+    // Step 2: Auto-install all updates
+    const total = data.updates.length;
+    let installed = 0;
+    let failed = [];
+
+    banner.innerHTML += `<div class="update-banner" id="updateProgress">
+      <div style="margin-bottom:6px;font-weight:600">Installing ${total} update${total > 1 ? 's' : ''}...</div>
+      ${data.updates.map(u => `<div class="update-banner-row" id="update-row-${esc(u.plugin_id.replace(/[@.]/g, '-'))}">
+        <span class="plugin-name-text">${esc(u.name)}</span>
+        <span class="version-info">${esc(u.installed_version)} &rarr; ${esc(u.available_version)}</span>
+        <span class="update-status" style="margin-left:auto;font-size:11px;color:var(--text-muted)">waiting...</span>
+      </div>`).join('')}
+    </div>`;
+
+    btn.textContent = `Updating 0/${total}...`;
+
+    for (const u of data.updates) {
+      const rowId = `update-row-${u.plugin_id.replace(/[@.]/g, '-')}`;
+      const statusEl = document.querySelector(`#${CSS.escape(rowId)} .update-status`);
+      if (statusEl) { statusEl.textContent = 'installing...'; statusEl.style.color = 'var(--blue)'; }
+
+      try {
+        const ures = await fetch('/api/update-plugin', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({plugin_id: u.plugin_id})
+        });
+        const udata = await ures.json();
+        if (udata.ok) {
+          installed++;
+          if (statusEl) { statusEl.textContent = 'done'; statusEl.style.color = 'var(--green)'; }
+        } else {
+          failed.push(u.name);
+          if (statusEl) { statusEl.textContent = 'failed'; statusEl.style.color = 'var(--red)'; }
+        }
+      } catch (e) {
+        failed.push(u.name);
+        if (statusEl) { statusEl.textContent = 'error'; statusEl.style.color = 'var(--red)'; }
+      }
+      btn.textContent = `Updating ${installed + failed.length}/${total}...`;
+    }
+
+    // Step 3: Show results
+    if (failed.length === 0) {
+      btn.textContent = `Updated ${installed} plugin${installed > 1 ? 's' : ''}!`;
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      btn.textContent = 'Install updates';
+      btn.disabled = false;
+      modalAlert(`Failed to update: ${failed.join(', ')}`);
+    }
+  } catch (e) {
+    banner.innerHTML = `<div class="update-banner" style="color:var(--red);border-color:var(--red);background:#FFE6E9;">Error: ${esc(e.message)}</div>`;
+    btn.textContent = 'Install updates';
+    btn.disabled = false;
+  }
+}
+
+async function toggleComponent(cb) {
+  const absPath = cb.dataset.absPath;
+  const enabled = cb.checked;
+  const row = cb.closest('.component-row');
+  row.style.opacity = '0.5';
+  try {
+    const res = await fetch('/api/toggle-component', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({abs_path: absPath, enabled})
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      modalAlert('Server error: ' + (text || res.status));
+      cb.checked = !enabled;
+      row.style.opacity = '';
+      return;
+    }
+    const data = await res.json();
+    if (data.ok) {
+      row.classList.toggle('component-disabled', !enabled);
+      // Update the abs_path on the checkbox since the file was renamed
+      if (data.path) cb.dataset.absPath = data.path;
+    } else {
+      modalAlert('Failed: ' + (data.error || 'Unknown error'));
+      cb.checked = !enabled;
+    }
+  } catch (e) {
+    modalAlert('Error: ' + e.message);
+    cb.checked = !enabled;
+  }
+  row.style.opacity = '';
+}
+
+async function upgradePlugin(badge) {
+  const pluginId = badge.dataset.pluginId;
+  if (!pluginId) { modalAlert('No plugin ID available for upgrade'); return; }
+  if (!await modalConfirm(`Upgrade ${pluginId}?`)) return;
+  badge.style.opacity = '0.5';
+  badge.style.pointerEvents = 'none';
+  const origHtml = badge.innerHTML;
+  badge.textContent = 'upgrading...';
+  try {
+    const res = await fetch('/api/update-plugin', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({plugin_id: pluginId})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      badge.textContent = 'done!';
+      badge.className = 'version-badge version-current';
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      modalAlert('Upgrade failed:\n' + (data.stderr || data.stdout || 'Unknown error'));
+      badge.innerHTML = origHtml;
+      badge.style.opacity = '';
+      badge.style.pointerEvents = '';
+    }
+  } catch (e) {
+    modalAlert('Upgrade error: ' + e.message);
+    badge.innerHTML = origHtml;
+    badge.style.opacity = '';
+    badge.style.pointerEvents = '';
+  }
+}
+
+async function moveSkillToScanned(btn) {
+  const absPath = btn.dataset.absPath;
+  const name = btn.dataset.skillName;
+  if (!await modalConfirm(`Copy "${name}" to ~/.claude/skills/${name}/?\n\nThis makes it discoverable by Claude Code and available to subagents.`)) return;
+  btn.disabled = true;
+  btn.textContent = 'copying...';
+  try {
+    const res = await fetch('/api/move-skill-to-scanned', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({abs_path: absPath, name: name})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = 'done!';
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      modalAlert('Failed: ' + (data.error || 'Unknown error'));
+      btn.textContent = 'add to skills/';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    modalAlert('Error: ' + e.message);
+    btn.textContent = 'add to skills/';
+    btn.disabled = false;
+  }
+}
+
+async function toggleModelInvocation(badge) {
+  const absPath = badge.dataset.absPath;
+  const currentlyDisabled = badge.textContent.trim() === 'manual';
+  const newDisable = !currentlyDisabled;
+  const action = newDisable ? 'Disable model invocation (make manual only)?' : 'Enable model invocation (allow agents to trigger this)?';
+  if (!await modalConfirm(action)) return;
+  badge.style.opacity = '0.5';
+  try {
+    const res = await fetch('/api/toggle-model-invocation', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({abs_path: absPath, disable: newDisable})
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      modalAlert('Server error: ' + (text || res.status));
+      badge.style.opacity = '';
+      return;
+    }
+    const data = await res.json();
+    if (data.ok) {
+      if (newDisable) {
+        badge.textContent = 'manual';
+      } else {
+        badge.remove();
+      }
+    } else {
+      modalAlert('Failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    modalAlert('Error: ' + e.message);
+  }
+  badge.style.opacity = '';
+}
+
+function applyFilter() {
+  const sections = document.querySelectorAll('.section');
+  const plugins = document.querySelectorAll('.plugin');
+  const query = document.getElementById('search').value.toLowerCase().trim();
+
+  sections.forEach(s => s.classList.remove('hidden'));
+  plugins.forEach(p => p.classList.remove('hidden'));
+  document.querySelectorAll('.skill').forEach(s => s.classList.remove('hidden'));
+  document.querySelectorAll('.component-section').forEach(s => s.classList.remove('hidden'));
+  document.querySelectorAll('.unscanned-section').forEach(s => s.classList.remove('hidden'));
+  document.querySelectorAll('.component-row').forEach(r => r.classList.remove('hidden'));
+
+  // Hide marketplaces section by default (unless marketplaces filter active)
+  if (activeFilter !== 'marketplaces') {
+    document.querySelector('[data-source="marketplaces"]')?.classList.add('hidden');
+  }
+
+  if (activeFilter === 'all') {
+    document.querySelector('[data-source="available"]')?.classList.add('hidden');
+  } else if (activeFilter === 'available') {
+    document.querySelector('[data-source="installed"]')?.classList.add('hidden');
+  } else if (activeFilter === 'duplicates') {
+    document.querySelector('[data-source="available"]')?.classList.add('hidden');
+    document.querySelectorAll('[data-source="installed"] .skill').forEach(s => {
+      if (s.dataset.isDuplicate !== 'true') s.classList.add('hidden');
+    });
+    document.querySelectorAll('[data-source="installed"] .component-section').forEach(s => s.classList.add('hidden'));
+    document.querySelectorAll('[data-source="installed"] .unscanned-section').forEach(s => s.classList.add('hidden'));
+  } else if (activeFilter === 'issues') {
+    document.querySelector('[data-source="available"]')?.classList.add('hidden');
+    document.querySelectorAll('[data-source="installed"] .skill').forEach(s => {
+      if (s.dataset.hasIssues !== 'true') s.classList.add('hidden');
+    });
+    document.querySelectorAll('[data-source="installed"] .component-section').forEach(s => s.classList.add('hidden'));
+    document.querySelectorAll('[data-source="installed"] .unscanned-section').forEach(s => s.classList.add('hidden'));
+  } else if (activeFilter === 'stale') {
+    document.querySelector('[data-source="available"]')?.classList.add('hidden');
+    document.querySelectorAll('[data-source="installed"] .skill').forEach(s => {
+      if (s.dataset.hasUpdate !== 'true') s.classList.add('hidden');
+    });
+    document.querySelectorAll('[data-source="installed"] .component-section').forEach(s => s.classList.add('hidden'));
+    document.querySelectorAll('[data-source="installed"] .unscanned-section').forEach(s => s.classList.add('hidden'));
+  } else if (activeFilter === 'marketplaces') {
+    document.querySelector('[data-source="installed"]')?.classList.add('hidden');
+    document.querySelector('[data-source="available"]')?.classList.add('hidden');
+    const mpSection = document.querySelector('[data-source="marketplaces"]');
+    if (mpSection) {
+      mpSection.classList.remove('hidden', 'collapsed');
+    }
+  }
+
+  if (query) {
+    document.querySelectorAll('.skill').forEach(s => {
+      const match = s.dataset.name.includes(query) || s.dataset.desc.includes(query);
+      if (!match) s.classList.add('hidden');
+    });
+    // Also search component rows (agents, hooks, mcp servers)
+    document.querySelectorAll('.component-row').forEach(r => {
+      const name = r.dataset.componentName || '';
+      const text = r.textContent.toLowerCase();
+      if (!name.includes(query) && !text.includes(query)) r.classList.add('hidden');
+    });
+    // Also search plugin names — unhide all children if plugin name matches
+    plugins.forEach(p => {
+      if (p.dataset.plugin && p.dataset.plugin.toLowerCase().includes(query)) {
+        p.querySelectorAll('.skill').forEach(s => s.classList.remove('hidden'));
+        p.querySelectorAll('.component-row').forEach(r => r.classList.remove('hidden'));
+      }
+    });
+  }
+
+  plugins.forEach(p => {
+    const visSkills = p.querySelectorAll('.plugin-body > .skill:not(.hidden)');
+    const visComponents = p.querySelectorAll('.component-section:not(.hidden) .component-row:not(.hidden)');
+    if (visSkills.length === 0 && visComponents.length === 0) p.classList.add('hidden');
+  });
+
+  sections.forEach(s => {
+    if (s.dataset.noAutoHide) return;
+    const vis = s.querySelectorAll('.plugin:not(.hidden)');
+    if (vis.length === 0 && !s.classList.contains('hidden')) s.classList.add('hidden');
+  });
+}
+
+// Init
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    applyFilter();
+  });
+});
+
+document.getElementById('search').addEventListener('input', applyFilter);
+
+Promise.all([fetchData(), fetchMarketplaces()])
+  .then(([data, mpData]) => {
+    DATA = data;
+    MP_DATA = mpData;
+    renderStats(data);
+    renderAll(data, mpData);
+    applyFilter();
+  })
+  .catch(err => {
+    document.getElementById('content').innerHTML =
+      `<div class="error">Failed to load: ${esc(err.message)}<br>Is serve.py running?</div>`;
+  });
+</script>
+</body>
+</html>
