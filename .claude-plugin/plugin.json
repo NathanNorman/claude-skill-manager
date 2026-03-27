@@ -1,0 +1,7 @@
+{
+  "name": "skill-manager",
+  "version": "1.0.0",
+  "description": "Local web UI for browsing, managing, and debugging Claude Code skills",
+  "skills": [],
+  "hooks": "hooks/hooks.json"
+}

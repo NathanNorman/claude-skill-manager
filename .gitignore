@@ -4,3 +4,5 @@ openspec/
 preferences.json
 docs/
 no-model.png
+.server.pid
+.server.log
