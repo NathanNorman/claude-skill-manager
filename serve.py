@@ -24,6 +24,8 @@ PLUGINS_DIR = CLAUDE_DIR / "plugins"
 MARKETPLACES_DIR = PLUGINS_DIR / "marketplaces"
 CACHE_DIR = PLUGINS_DIR / "cache"
 SKILLS_DIR = CLAUDE_DIR / "skills"
+AGENTS_DIR = CLAUDE_DIR / "agents"
+COMMANDS_DIR = CLAUDE_DIR / "commands"
 INSTALLED_PLUGINS_FILE = PLUGINS_DIR / "installed_plugins.json"
 KNOWN_MARKETPLACES_FILE = PLUGINS_DIR / "known_marketplaces.json"
 PREFS_FILE = Path(__file__).parent / "preferences.json"
@@ -450,16 +452,20 @@ def scan_flat_layout(plugin_dir: Path, skip_git: bool = False) -> list[dict]:
 
 
 def scan_commands(plugin_dir: Path, skip_git: bool = False) -> list[dict]:
-    """Scan commands/*.md for legacy command files."""
+    """Scan commands/*.md and commands/**/*.md for command files."""
     results = []
     commands_dir = plugin_dir / "commands"
     if not commands_dir.is_dir():
         return results
-    for md_file in sorted(list(commands_dir.glob("*.md")) + list(commands_dir.glob("*.md.disabled"))):
-        if md_file.name.startswith("."):
+    for md_file in sorted(list(commands_dir.rglob("*.md")) + list(commands_dir.rglob("*.md.disabled"))):
+        if md_file.name.startswith(".") or md_file.stem.upper() == "README":
             continue
         entry = _build_skill_entry(md_file, "command", skip_git=skip_git)
         if entry:
+            # For commands in subdirs, prefix the name with the subdir
+            rel = md_file.relative_to(commands_dir)
+            if len(rel.parts) > 1:
+                entry["name"] = f"{rel.parts[0]}:{entry['name']}"
             results.append(entry)
     return results
 
@@ -471,6 +477,8 @@ def scan_agents(plugin_dir: Path, manifest: dict | None = None) -> list[dict]:
 
     def _scan_agent_file(md_file: Path):
         if md_file in seen or not md_file.is_file():
+            return
+        if md_file.stem.upper() == "README":
             return
         seen.add(md_file)
         try:
@@ -729,6 +737,63 @@ def scan_local_skills(base_dir: Path) -> list[dict]:
     return skills
 
 
+def scan_local_agents() -> list[dict]:
+    """Scan ~/.claude/agents/ for user-level agent definitions."""
+    return scan_agents(CLAUDE_DIR)
+
+
+def scan_local_commands() -> list[dict]:
+    """Scan ~/.claude/commands/ for user-level command files."""
+    return scan_commands(CLAUDE_DIR)
+
+
+def scan_settings_hooks() -> list[dict]:
+    """Read hooks from ~/.claude/settings.json (user-level hooks, not plugin hooks)."""
+    results = []
+    if not SETTINGS_FILE.exists():
+        return results
+    try:
+        with open(SETTINGS_FILE) as f:
+            settings = json.load(f)
+    except Exception:
+        return results
+
+    hooks_obj = settings.get("hooks", {})
+    for event_type, matchers in hooks_obj.items():
+        if not isinstance(matchers, list):
+            continue
+        for matcher_block in matchers:
+            matcher = matcher_block.get("matcher", "*")
+            for hook_entry in matcher_block.get("hooks", []):
+                entry_type = hook_entry.get("type", "unknown")
+                command = hook_entry.get("command", "")
+                # Derive a short name from the command
+                if command:
+                    # Extract script filename from the command
+                    parts = command.strip().split()
+                    # Find the last part that looks like a file path
+                    script_name = ""
+                    for p in reversed(parts):
+                        if "/" in p and not p.startswith("-"):
+                            script_name = Path(p).name
+                            break
+                    if not script_name:
+                        script_name = parts[-1] if parts else command[:40]
+                else:
+                    script_name = ""
+                results.append({
+                    "event_type": event_type,
+                    "matcher": matcher if matcher else "*",
+                    "entry_type": entry_type,
+                    "command": command,
+                    "prompt": hook_entry.get("prompt", ""),
+                    "agent": hook_entry.get("agent", ""),
+                    "timeout": hook_entry.get("timeout"),
+                    "script_name": script_name,
+                })
+    return results
+
+
 # ---------------------------------------------------------------------------
 def _marketplace_repo_url(mp_name: str) -> str | None:
     """Get the GitHub repo URL for a marketplace by checking its git remote."""
@@ -895,23 +960,37 @@ def get_all_data() -> dict:
                     "component_counts": components["component_counts"],
                 })
 
-    # --- Installed: local skills (as a pseudo-group) ---
+    # --- Installed: local skills + agents + commands + hooks (as a pseudo-group) ---
     local_skills = scan_local_skills(SKILLS_DIR)
-    if local_skills:
+    local_agents = scan_local_agents()
+    local_commands = scan_local_commands()
+    local_hooks = scan_settings_hooks()
+
+    # Local commands are skills with source_type="command"
+    for c in local_commands:
+        c["loaded"] = True
+
+    if local_skills or local_agents or local_commands or local_hooks:
         installed_groups.insert(0, {
-            "name": "Local Skills",
+            "name": "Local",
             "plugin_id": None,
             "version": None,
             "marketplace": None,
-            "skills": local_skills,
+            "skills": local_skills + local_commands,
             "skill_count": len(local_skills),
             "source": "local",
-            "install_path": str(SKILLS_DIR),
+            "install_path": str(CLAUDE_DIR),
             "repo_url": None,
-            "agents": [],
-            "hooks": [],
+            "agents": local_agents,
+            "hooks": local_hooks,
             "mcp_servers": [],
-            "component_counts": {"skills": len(local_skills), "commands": 0, "agents": 0, "hooks": 0, "mcp_servers": 0},
+            "component_counts": {
+                "skills": len(local_skills),
+                "commands": len(local_commands),
+                "agents": len(local_agents),
+                "hooks": len(local_hooks),
+                "mcp_servers": 0,
+            },
         })
 
     # --- Available: marketplace plugins NOT installed ---
