@@ -1,4 +1,4 @@
-#!/Users/nathan.norman/.pyenv/versions/3.12.11/bin/python3
+#!/usr/bin/env python3
 """
 Claude Code Skill Manager — Local HTTP server.
 Serves the UI and provides an API to read skill data from the filesystem.
@@ -167,10 +167,80 @@ def apply_prefs():
 
 
 # ---------------------------------------------------------------------------
+# Git dirty detection (per-file)
+# ---------------------------------------------------------------------------
+
+# Cache: git repo root -> set of dirty paths (relative to repo root)
+_git_dirty_cache: dict[str, set[str]] = {}
+# Cache: directory path -> repo root (avoids repeated rev-parse subprocess calls)
+_repo_root_cache: dict[str, str | None] = {}
+
+
+def _find_repo_root(dir_path: str) -> str | None:
+    """Find the git repo root for a directory, with caching.
+
+    If dir_path is inside a known repo root, returns that root immediately
+    without spawning a subprocess.
+    """
+    if dir_path in _repo_root_cache:
+        return _repo_root_cache[dir_path]
+    # Fast path: check if dir_path is inside any already-known repo root
+    for cached_root in _git_dirty_cache:
+        if dir_path.startswith(cached_root + os.sep) or dir_path == cached_root:
+            _repo_root_cache[dir_path] = cached_root
+            return cached_root
+    try:
+        result = subprocess.run(
+            ["git", "-C", dir_path, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        root = result.stdout.strip() if result.returncode == 0 else None
+    except Exception:
+        root = None
+    _repo_root_cache[dir_path] = root
+    return root
+
+
+def _is_git_dirty(file_path: Path) -> bool:
+    """Check if a file has uncommitted changes (modified, staged, or untracked) in its git repo."""
+    abs_str = str(file_path.resolve())
+    # Find the git repo root for this file (cached per directory)
+    repo_root = _find_repo_root(str(file_path.parent))
+    if repo_root is None:
+        return False
+
+    # Populate cache for this repo if not already done
+    if repo_root not in _git_dirty_cache:
+        try:
+            result = subprocess.run(
+                ["git", "-C", repo_root, "status", "--porcelain"],
+                capture_output=True, text=True, timeout=10,
+            )
+            dirty_paths: set[str] = set()
+            if result.returncode == 0:
+                for line in result.stdout.strip().splitlines():
+                    if len(line) > 3:
+                        # porcelain format: XY filename (or XY orig -> renamed)
+                        path_part = line[3:].split(" -> ")[-1].strip()
+                        dirty_paths.add(os.path.join(repo_root, path_part))
+            _git_dirty_cache[repo_root] = dirty_paths
+        except Exception:
+            _git_dirty_cache[repo_root] = set()
+
+    # Check if this file or its parent directory has dirty files
+    dirty = _git_dirty_cache[repo_root]
+    if abs_str in dirty:
+        return True
+    # Also check if any file in the skill's directory is dirty
+    skill_dir = str(file_path.parent.resolve())
+    return any(d.startswith(skill_dir + os.sep) or d == skill_dir for d in dirty)
+
+
+# ---------------------------------------------------------------------------
 # Skill metadata extraction
 # ---------------------------------------------------------------------------
 
-def _build_skill_entry(skill_md: Path, source_type: str = "skill") -> dict | None:
+def _build_skill_entry(skill_md: Path, source_type: str = "skill", skip_git: bool = False) -> dict | None:
     """Read a SKILL.md (or command .md) and return a metadata dict."""
     try:
         content = skill_md.read_text(encoding="utf-8")
@@ -244,6 +314,7 @@ def _build_skill_entry(skill_md: Path, source_type: str = "skill") -> dict | Non
         "validation_issues": issues,
         "desc_chars": desc_chars,
         "frontmatter": fm,
+        "git_dirty": False if skip_git else _is_git_dirty(skill_md),
     }
 
 
@@ -267,7 +338,7 @@ def read_plugin_manifest(plugin_dir: Path) -> dict | None:
 # Discovery helpers — match Claude Code's actual behavior
 # ---------------------------------------------------------------------------
 
-def scan_supplemental_skills(plugin_dir: Path, skills_field: list | str) -> list[dict]:
+def scan_supplemental_skills(plugin_dir: Path, skills_field: list | str, skip_git: bool = False) -> list[dict]:
     """Scan additional skill paths from the skills field (supplements default skills/ dir).
     The skills field can be a string (single path) or array of paths."""
     if isinstance(skills_field, str):
@@ -284,7 +355,7 @@ def scan_supplemental_skills(plugin_dir: Path, skills_field: list | str) -> list
             for pattern in ("SKILL.md", "SKILL.md.disabled"):
                 candidate = resolved / pattern
                 if candidate.exists():
-                    entry = _build_skill_entry(candidate, "skill")
+                    entry = _build_skill_entry(candidate, "skill", skip_git=skip_git)
                     if entry:
                         results.append(entry)
                     break
@@ -296,14 +367,14 @@ def scan_supplemental_skills(plugin_dir: Path, skills_field: list | str) -> list
                     for pattern in ("SKILL.md", "SKILL.md.disabled"):
                         candidate = subdir / pattern
                         if candidate.exists():
-                            entry = _build_skill_entry(candidate, "skill")
+                            entry = _build_skill_entry(candidate, "skill", skip_git=skip_git)
                             if entry:
                                 results.append(entry)
                             break
     return results
 
 
-def scan_skills_subdir(plugin_dir: Path) -> list[dict]:
+def scan_skills_subdir(plugin_dir: Path, skip_git: bool = False) -> list[dict]:
     """Rule 2: no skills field in manifest — auto-discover skills/*/SKILL.md (one level deep)."""
     results = []
     skills_dir = plugin_dir / "skills"
@@ -315,14 +386,14 @@ def scan_skills_subdir(plugin_dir: Path) -> list[dict]:
         for pattern in ("SKILL.md", "SKILL.md.disabled"):
             candidate = subdir / pattern
             if candidate.exists():
-                entry = _build_skill_entry(candidate, "skill")
+                entry = _build_skill_entry(candidate, "skill", skip_git=skip_git)
                 if entry:
                     results.append(entry)
                 break
     return results
 
 
-def scan_flat_layout(plugin_dir: Path) -> list[dict]:
+def scan_flat_layout(plugin_dir: Path, skip_git: bool = False) -> list[dict]:
     """Rule 4: no plugin.json — scan default locations.
 
     Claude Code scans `skills/` first. If that doesn't exist, it looks for a
@@ -343,19 +414,16 @@ def scan_flat_layout(plugin_dir: Path) -> list[dict]:
             for pattern in ("SKILL.md", "SKILL.md.disabled"):
                 candidate = subdir / pattern
                 if candidate.exists():
-                    entry = _build_skill_entry(candidate, "skill")
+                    entry = _build_skill_entry(candidate, "skill", skip_git=skip_git)
                     if entry:
                         results.append(entry)
                     break
         return results
 
     # Try a subdirectory matching the plugin name
-    # (e.g., document-skills plugin has document-skills/ subdir with docx/, pdf/, etc.)
-    # Derive plugin name from installed_plugins.json or directory name
     plugin_name_dir = None
     for subdir in plugin_dir.iterdir():
         if subdir.is_dir() and not subdir.name.startswith("."):
-            # Check if this subdir contains skill subdirs (not just a single SKILL.md)
             has_skill_subdirs = any(
                 (child / "SKILL.md").exists() or (child / "SKILL.md.disabled").exists()
                 for child in subdir.iterdir()
@@ -372,7 +440,7 @@ def scan_flat_layout(plugin_dir: Path) -> list[dict]:
             for pattern in ("SKILL.md", "SKILL.md.disabled"):
                 candidate = subdir / pattern
                 if candidate.exists():
-                    entry = _build_skill_entry(candidate, "skill")
+                    entry = _build_skill_entry(candidate, "skill", skip_git=skip_git)
                     if entry:
                         results.append(entry)
                     break
@@ -381,7 +449,7 @@ def scan_flat_layout(plugin_dir: Path) -> list[dict]:
     return results
 
 
-def scan_commands(plugin_dir: Path) -> list[dict]:
+def scan_commands(plugin_dir: Path, skip_git: bool = False) -> list[dict]:
     """Scan commands/*.md for legacy command files."""
     results = []
     commands_dir = plugin_dir / "commands"
@@ -390,7 +458,7 @@ def scan_commands(plugin_dir: Path) -> list[dict]:
     for md_file in sorted(list(commands_dir.glob("*.md")) + list(commands_dir.glob("*.md.disabled"))):
         if md_file.name.startswith("."):
             continue
-        entry = _build_skill_entry(md_file, "command")
+        entry = _build_skill_entry(md_file, "command", skip_git=skip_git)
         if entry:
             results.append(entry)
     return results
@@ -567,20 +635,20 @@ def scan_mcp_servers(plugin_dir: Path, manifest: dict | None = None) -> list[dic
     return results
 
 
-def _scan_all_skills_recursive(plugin_dir: Path) -> list[dict]:
+def _scan_all_skills_recursive(plugin_dir: Path, skip_git: bool = False) -> list[dict]:
     """Find ALL SKILL.md files anywhere under a plugin dir (for showing unloaded skills)."""
     results = []
     if not plugin_dir.is_dir():
         return results
     for pattern in ("SKILL.md", "SKILL.md.disabled"):
         for skill_md in sorted(plugin_dir.rglob(pattern)):
-            entry = _build_skill_entry(skill_md, "skill")
+            entry = _build_skill_entry(skill_md, "skill", skip_git=skip_git)
             if entry:
                 results.append(entry)
     return results
 
 
-def discover_plugin_components(plugin_dir: Path) -> dict:
+def discover_plugin_components(plugin_dir: Path, skip_git: bool = False) -> dict:
     """Discover all plugin components the way Claude Code does — respecting plugin.json.
 
     Returns a dict with keys: skills, commands, agents, hooks, mcp_servers.
@@ -594,19 +662,19 @@ def discover_plugin_components(plugin_dir: Path) -> dict:
 
     if manifest is not None:
         # Always scan the default skills/ subdir
-        skills = scan_skills_subdir(plugin_dir)
+        skills = scan_skills_subdir(plugin_dir, skip_git=skip_git)
         seen_paths = {s["abs_path"] for s in skills}
 
         # Supplement with any additional paths from the skills field
         skills_field = manifest.get("skills")
         if skills_field and (isinstance(skills_field, str) or len(skills_field) > 0):
-            for extra in scan_supplemental_skills(plugin_dir, skills_field):
+            for extra in scan_supplemental_skills(plugin_dir, skills_field, skip_git=skip_git):
                 if extra["abs_path"] not in seen_paths:
                     skills.append(extra)
                     seen_paths.add(extra["abs_path"])
     else:
         # No manifest → flat layout (document-skills style)
-        skills = scan_flat_layout(plugin_dir)
+        skills = scan_flat_layout(plugin_dir, skip_git=skip_git)
 
     # Mark loaded skills
     loaded_paths = {s["abs_path"] for s in skills}
@@ -614,14 +682,14 @@ def discover_plugin_components(plugin_dir: Path) -> dict:
         s["loaded"] = True
 
     # Find unloaded skills (exist on disk but not discovered)
-    all_skills = _scan_all_skills_recursive(plugin_dir)
+    all_skills = _scan_all_skills_recursive(plugin_dir, skip_git=skip_git)
     for s in all_skills:
         if s["abs_path"] not in loaded_paths:
             s["loaded"] = False
             skills.append(s)
 
     # Always also discover commands
-    commands = scan_commands(plugin_dir)
+    commands = scan_commands(plugin_dir, skip_git=skip_git)
     for c in commands:
         c["loaded"] = True
 
@@ -706,6 +774,8 @@ def get_all_data() -> dict:
       available — marketplace plugins not yet installed (browse/install only)
     """
     _mp_repo_cache.clear()
+    _git_dirty_cache.clear()
+    _repo_root_cache.clear()
     installed_map = get_installed_plugins()
 
     # --- Scan marketplace for available/installed plugin metadata ---
@@ -719,7 +789,7 @@ def get_all_data() -> dict:
             for plugin_dir in sorted(search_dir.iterdir()):
                 if not plugin_dir.is_dir() or plugin_dir.name.startswith("."):
                     continue
-                components = discover_plugin_components(plugin_dir)
+                components = discover_plugin_components(plugin_dir, skip_git=True)
                 skills = components["skills"]
                 if not skills:
                     continue
@@ -1181,15 +1251,55 @@ def toggle_model_invocation(abs_path: str, disable: bool) -> dict:
     return {"ok": True, "path": abs_path, "disable_model_invocation": disable}
 
 
+# ---------------------------------------------------------------------------
+# Response cache — avoids re-scanning the filesystem on every request
+# ---------------------------------------------------------------------------
+
+_skills_cache: bytes | None = None
+_skills_cache_key: tuple | None = None  # (installed_plugins mtime, preferences mtime, settings mtime)
+
+
+def _cache_key() -> tuple:
+    """Build a cheap cache key from file mtimes that signal data changes."""
+    def _mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except Exception:
+            return 0.0
+    return (
+        _mtime(INSTALLED_PLUGINS_FILE),
+        _mtime(PREFS_FILE),
+        _mtime(SETTINGS_FILE),
+        _mtime(KNOWN_MARKETPLACES_FILE),
+    )
+
+
+def _invalidate_skills_cache():
+    global _skills_cache, _skills_cache_key
+    _skills_cache = None
+    _skills_cache_key = None
+
+
+def _get_skills_response() -> bytes:
+    global _skills_cache, _skills_cache_key
+    key = _cache_key()
+    if _skills_cache is not None and _skills_cache_key == key:
+        return _skills_cache
+    data = get_all_data()
+    _skills_cache = json.dumps(data, indent=2).encode()
+    _skills_cache_key = key
+    return _skills_cache
+
+
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/skills":
-            data = get_all_data()
+            payload = _get_skills_response()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(json.dumps(data, indent=2).encode())
+            self.wfile.write(payload)
         elif self.path == "/api/marketplaces":
             data = get_marketplace_data()
             self._json_response(data)
@@ -1211,6 +1321,7 @@ class Handler(SimpleHTTPRequestHandler):
         return json.loads(self.rfile.read(length))
 
     def do_POST(self):
+        _invalidate_skills_cache()
         if self.path == "/api/toggle":
             body = self._read_body()
             result = set_skill_enabled(body.get("path", ""), body.get("enabled", True))

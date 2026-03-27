@@ -680,6 +680,7 @@
   }
 
   .tag-missing { background: #FFE6E9; color: var(--red); }
+  .tag-dirty { background: #FFF8E1; color: #8B5E00; }
 
   /* Marketplace registry rows */
   .mp-row {
@@ -1330,6 +1331,7 @@ function renderSkillDetail(skill) {
       </div>
       <div class="detail-path">${esc(absPath)}</div>
       ${renderFrontmatter(skill)}
+      ${skill.git_dirty ? `<div class="detail-warning warn-yellow">Uncommitted changes &mdash; skill directory has modifications not yet committed to git.</div>` : ''}
       ${warningsHtml}
       ${subagentHtml}
     </div>
@@ -1362,6 +1364,7 @@ function renderSkill(skill) {
       <input type="checkbox" class="skill-check" data-path="${esc(skill.path)}" ${checked}>
       <div class="skill-summary">
         <span class="skill-name">${esc(skill.name)}</span>
+        ${skill.git_dirty ? `<span class="mp-tag tag-dirty" data-tooltip="Uncommitted changes in skill directory">modified</span>` : ''}
         ${skill.disable_model_invocation ? `<span class="mp-tag tag-command" style="cursor:pointer" data-tooltip="Only invocable via slash command — agents cannot trigger this skill automatically" data-abs-path="${esc(skill.abs_path)}" onclick="event.stopPropagation(); toggleModelInvocation(this)">manual</span>` : ''}
         <span class="skill-desc">${esc(skill.description || '')}</span>
         ${skill.loaded === false ? `<button class="move-skill-btn" data-abs-path="${esc(skill.abs_path)}" data-skill-name="${esc(skill.name)}" onclick="event.stopPropagation(); moveSkillToScanned(this)" data-tooltip="Copy to ~/.claude/skills/ so Claude Code can discover it">add to skills/</button>` : ''}
