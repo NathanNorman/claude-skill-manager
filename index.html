@@ -208,7 +208,7 @@
     font-weight: 500;
   }
 
-  .tag-marketplace { background: #E7EAF6; color: var(--blue); }
+  .tag-marketplace { background: #FCE8E5; color: var(--accent); border: 1px solid #F5C0B5; }
   .tag-local { background: #F2E7FA; color: var(--purple); }
   .tag-cache { background: #FEEDB4; color: #8B5E00; }
   .tag-direct { background: #E8F7D4; color: var(--green); }
@@ -409,7 +409,7 @@
   /* Skill row — clean: dot + checkbox + name + description */
   .skill {
     display: grid;
-    grid-template-columns: auto 32px 1fr;
+    grid-template-columns: auto 32px 1fr auto;
     align-items: center;
     gap: 8px;
     padding: 7px 8px 7px 38px;
@@ -485,7 +485,7 @@
   .skill-summary {
     display: flex;
     gap: 12px;
-    align-items: baseline;
+    align-items: center;
     min-width: 0;
     overflow: hidden;
   }
@@ -1091,6 +1091,78 @@
   .plugin.plugin-expanded .plugin-detail { display: block; }
   .plugin.plugin-expanded .plugin-header { background: var(--surface-hover); border-radius: var(--radius); }
 
+  /* Marketplace row detail (expandable) */
+  .mp-row-detail {
+    display: none;
+    padding: 10px 16px;
+    margin: 2px 12px 6px 38px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.8;
+    color: var(--text-dim);
+  }
+  .mp-row-expanded .mp-row-detail { display: block; }
+  .mp-row-expanded > .mp-row { background: var(--surface-hover); }
+
+  /* Marketplace subheader detail (expandable) */
+  .mp-subheader-detail {
+    display: none;
+    padding: 8px 16px;
+    margin: 4px 8px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+  .mp-subheader-expanded .mp-subheader-detail { display: block; }
+  .mp-subheader-clickable:hover { background: var(--surface-hover); border-radius: var(--radius); }
+
+  /* Per-skill budget indicator */
+  .skill-budget-bar {
+    width: 40px;
+    height: 6px;
+    border-radius: 3px;
+    background: #E5E5E5;
+    overflow: visible;
+    flex-shrink: 0;
+  }
+  .skill-budget-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.2s;
+  }
+  .budget-low .skill-budget-fill { background: var(--green); width: 25%; }
+  .budget-med .skill-budget-fill { background: var(--yellow); width: 55%; }
+  .budget-high .skill-budget-fill { background: #E04400; width: 80%; }
+  .budget-extreme .skill-budget-fill { background: var(--red); width: 100%; animation: budgetPulse 1.2s ease-in-out infinite; }
+  @keyframes budgetPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .hide-budget-bars .skill-budget-bar { display: none; }
+
+  /* Budget toggle button */
+  .budget-toggle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .budget-toggle:hover { border-color: var(--border-light); color: var(--text); }
+  .budget-toggle.active { border-color: var(--accent); color: var(--accent); background: #FCE8E5; }
+
   /* Hidden by filter */
   .hidden { display: none !important; }
 </style>
@@ -1125,6 +1197,59 @@
 <script>
 let DATA = null;
 let activeFilter = 'all';
+let showBudgetBars = true;
+
+function budgetBarHtml(chars) {
+  if (!chars || chars <= 0) return '';
+  const cls = chars < 150 ? 'budget-low' : chars < 300 ? 'budget-med' : chars < 450 ? 'budget-high' : 'budget-extreme';
+  return `<div class="skill-budget-bar ${cls}" data-tooltip="${chars.toLocaleString()} chars"><div class="skill-budget-fill"></div></div>`;
+}
+
+function recalcBudget() {
+  if (!DATA) return;
+  // Recalculate from DOM: sum desc_chars for enabled, non-shadowed skills
+  let total = 0;
+  document.querySelectorAll('[data-source="installed"] .skill:not(.skill-unloaded)').forEach(row => {
+    const cb = row.querySelector('.skill-check');
+    if (cb && cb.checked && !row.classList.contains('skill-shadowed')) {
+      // Find the budget bar tooltip to get chars, or use data
+      const bar = row.querySelector('.skill-budget-bar');
+      if (bar) {
+        const chars = parseInt(bar.dataset.tooltip) || 0;
+        total += chars;
+      }
+    }
+  });
+  // Also count enabled command rows
+  document.querySelectorAll('[data-source="installed"] .component-row[data-component-type="command"]').forEach(row => {
+    const cb = row.querySelector('.component-check');
+    if (cb && cb.checked) {
+      const bar = row.querySelector('.skill-budget-bar');
+      if (bar) total += parseInt(bar.dataset.tooltip) || 0;
+    }
+  });
+  const budget = DATA.stats.budget;
+  const pct = Math.round(total / budget * 100);
+  const budgetColor = pct > 100 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)';
+  const budgetClass = pct > 100 ? 'budget-over' : pct > 70 ? 'budget-warn' : 'budget-ok';
+  const fillWidth = Math.min(pct, 100);
+  const wrap = document.querySelector('.budget-bar-wrap');
+  if (wrap) {
+    wrap.querySelector('.budget-text').style.color = budgetColor;
+    wrap.querySelector('.budget-text').textContent = `${total.toLocaleString()} / ${budget.toLocaleString()}`;
+    wrap.querySelector('.budget-bar-fill').className = `budget-bar-fill ${budgetClass}`;
+    wrap.querySelector('.budget-bar-fill').style.width = `${fillWidth}%`;
+    // Update the percentage text (second .budget-text)
+    const texts = wrap.querySelectorAll('.budget-text');
+    if (texts[1]) { texts[1].textContent = `${pct}%`; texts[1].style.color = budgetColor; }
+  }
+}
+
+function toggleBudgetBars() {
+  showBudgetBars = !showBudgetBars;
+  document.getElementById('content').classList.toggle('hide-budget-bars', !showBudgetBars);
+  document.getElementById('budgetToggle').classList.toggle('active', showBudgetBars);
+}
 
 // --- Custom modal system ---
 function showModal(msg, {confirm: isConfirm = false, danger = false} = {}) {
@@ -1213,12 +1338,14 @@ function renderStats(data) {
       <span class="stat-value">${s.total_mcp_servers}</span>
       <span class="stat-label">mcp servers</span>
     </div>` : ''}
-    <div class="budget-bar-wrap">
-      <span class="budget-text" style="color:${budgetColor}">${s.total_desc_chars.toLocaleString()} / ${s.budget.toLocaleString()} chars</span>
+    <div class="budget-bar-wrap" data-tooltip="Skill description budget: Claude Code injects skill descriptions into every prompt.\nTotal chars used vs SLASH_COMMAND_TOOL_CHAR_BUDGET (${s.budget.toLocaleString()}).\nOver budget = some skills silently dropped from context.${s.budget_source !== 'default' ? `\nSource: ${s.budget_source}` : ''}">
+      <span class="stat-label">budget</span>
+      <span class="budget-text" style="color:${budgetColor}">${s.total_desc_chars.toLocaleString()} / ${s.budget.toLocaleString()}</span>
       <div class="budget-bar">
         <div class="budget-bar-fill ${budgetClass}" style="width:${fillWidth}%"></div>
       </div>
-      <span class="budget-text" style="color:${budgetColor}">${pct}%${s.budget_source !== 'default' ? ` (${s.budget_source})` : ''}</span>
+      <span class="budget-text" style="color:${budgetColor}">${pct}%</span>
+      <button class="budget-toggle active" id="budgetToggle" onclick="toggleBudgetBars()" data-tooltip="Show/hide per-skill budget bars">bars</button>
     </div>
   `;
 }
@@ -1369,32 +1496,46 @@ function renderSkill(skill) {
         <span class="skill-desc">${esc(skill.description || '')}</span>
         ${skill.loaded === false ? `<button class="move-skill-btn" data-abs-path="${esc(skill.abs_path)}" data-skill-name="${esc(skill.name)}" onclick="event.stopPropagation(); moveSkillToScanned(this)" data-tooltip="Copy to ~/.claude/skills/ so Claude Code can discover it">add to skills/</button>` : ''}
       </div>
+      ${budgetBarHtml(skill.desc_chars)}
       ${renderSkillDetail(skill)}
     </div>
   `;
 }
 
 function renderAvailableSkill(skill) {
+  const fm = skill.frontmatter || {};
+  const chars = skill.desc_chars || 0;
   return `
     <div class="skill" data-name="${skill.name.toLowerCase()}" data-desc="${(skill.description || '').toLowerCase()}" data-source-type="${skill.source_type || 'skill'}">
-      <div class="skill-dot dot-none"></div>
+      <div class="skill-icons"></div>
       <div style="width:32px"></div>
       <div class="skill-summary">
         <span class="skill-name" style="color:var(--text-muted)">${esc(skill.name)}</span>
+        ${skill.disable_model_invocation ? `<span class="mp-tag tag-command">manual</span>` : ''}
         <span class="skill-desc">${esc(skill.description || '')}</span>
+      </div>
+      ${budgetBarHtml(chars)}
+      <div class="skill-detail">
+        <div class="detail-row">
+          <span class="detail-value"><strong>Type:</strong> ${skill.source_type === 'command' ? 'Command' : 'Skill'}</span>
+          <span class="detail-sep">|</span>
+          <span class="detail-value"><strong>Budget cost:</strong> ${chars.toLocaleString()} chars</span>
+        </div>
+        ${renderFrontmatter(skill)}
       </div>
     </div>
   `;
 }
 
-function sourceTag(source) {
+function sourceTag(source, marketplace) {
+  if (source === 'plugin' && marketplace) {
+    return `<span class="mp-tag tag-marketplace">${esc(marketplace)}</span>`;
+  }
   const tags = {
-    'plugin': 'tag-cache',
     'local': 'tag-local',
     'local-plugin': 'tag-direct',
   };
   const labels = {
-    'plugin': 'plugin',
     'local': 'local',
     'local-plugin': 'local plugin',
   };
@@ -1434,25 +1575,25 @@ function renderInstalledGroup(group) {
     return parts.join(', ') || 'empty';
   })();
 
+  // Plugin-specific details only (no marketplace info — that's on the marketplace subheader)
   const detailRows = [
     group.install_path ? `<div><strong style="color:var(--text)">Install path:</strong> <span style="font-family:'JetBrains Mono',monospace;word-break:break-all">${esc(group.install_path)}</span></div>` : '',
     group.plugin_id ? `<div><strong>Plugin ID:</strong> ${esc(group.plugin_id)}</div>` : '',
-    group.source ? `<div><strong>Source:</strong> ${esc(group.source)}</div>` : '',
-    group.version && group.version !== 'unknown' ? `<div><strong>Version:</strong> ${esc(group.version)}</div>` : '',
-    group.marketplace ? `<div><strong>Marketplace:</strong> ${esc(group.marketplace)}</div>` : '',
-    group.marketplace_version ? `<div><strong>Latest version:</strong> ${esc(group.marketplace_version)}</div>` : '',
-    group.repo_url ? `<div><strong>Repo:</strong> <a href="${esc(group.repo_url)}" target="_blank" style="color:var(--blue);text-decoration:none">${esc(group.repo_url)}</a></div>` : '',
+    group.version && group.version !== 'unknown' ? `<div><strong>Version:</strong> ${esc(group.version)}${group.marketplace_version && group.marketplace_version !== group.version ? ` (latest: ${esc(group.marketplace_version)})` : ''}</div>` : '',
     `<div><strong>Components:</strong> ${esc(componentSummary)}</div>`,
   ].filter(Boolean).join('\n        ');
 
+  // Only show source tag for non-marketplace plugins (local, local-plugin)
+  const showSourceTag = group.source !== 'plugin';
+
   return `
     <div class="plugin" data-installed="true" data-plugin="${esc(group.name)}">
-      <div class="plugin-header">
-        <input type="checkbox" class="plugin-check" ${pluginChecked} ${pluginIndet}>
+      <div class="plugin-header" onclick="this.closest('.plugin').classList.toggle('plugin-expanded')">
+        <input type="checkbox" class="plugin-check" onclick="event.stopPropagation()" ${pluginChecked} ${pluginIndet}>
         <span class="plugin-chevron" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('collapsed')">&#9660;</span>
-        <span class="plugin-name" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('plugin-expanded')">${esc(group.name)}</span>
+        <span class="plugin-name">${esc(group.name)}</span>
         ${versionBadge}
-        ${sourceTag(group.source)}
+        ${showSourceTag ? sourceTag(group.source, group.marketplace) : ''}
         <span class="plugin-skill-count">${(() => {
           const loaded = group.skills.filter(s => s.loaded !== false).length;
           const total = group.skills.length;
@@ -1497,11 +1638,10 @@ function renderAvailableGroup(plugin) {
 
   return `
     <div class="plugin" data-installed="false" data-plugin="${esc(plugin.name)}">
-      <div class="plugin-header">
+      <div class="plugin-header" onclick="this.closest('.plugin').classList.toggle('plugin-expanded')">
         <div style="width:16px"></div>
         <span class="plugin-chevron" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('collapsed')">&#9660;</span>
-        <span class="plugin-name" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('plugin-expanded')">${esc(plugin.name)}</span>
-        <span class="mp-tag tag-marketplace">${esc(plugin.marketplace)}</span>
+        <span class="plugin-name">${esc(plugin.name)}</span>
         <span class="plugin-skill-count">${plugin.skill_count} skill${plugin.skill_count !== 1 ? 's' : ''}</span>
         <button class="install-btn" data-plugin-id="${esc(plugin.plugin_id)}" onclick="event.stopPropagation(); installPlugin(this)">install</button>
       </div>
@@ -1554,20 +1694,31 @@ function renderCommandRow(cmd) {
   const noModel = cmd.disable_model_invocation;
   const chars = cmd.desc_chars || 0;
   const isEnabled = cmd.enabled !== false;
+  const hasIssues = cmd.validation_issues && cmd.validation_issues.length > 0;
+  const issueMessages = (cmd.validation_issues || []).map(i => {
+    if (i === 'no_frontmatter') return 'Missing YAML frontmatter';
+    if (i === 'no_name') return 'Missing name field in frontmatter';
+    if (i === 'no_description') return 'Missing description field in frontmatter';
+    return i;
+  });
+  const issueTooltip = issueMessages.join(', ');
   return `
-    <div class="component-row ${!isEnabled ? 'component-disabled' : ''}" data-component-type="command" data-component-name="${esc(cmd.name.toLowerCase())}">
+    <div class="component-row ${!isEnabled ? 'component-disabled' : ''}" data-component-type="command" data-component-name="${esc(cmd.name.toLowerCase())}" data-has-issues="${hasIssues}">
       <input type="checkbox" class="component-check" data-abs-path="${esc(cmd.abs_path)}" ${isEnabled ? 'checked' : ''} onclick="event.stopPropagation(); toggleComponent(this)">
+      ${hasIssues ? `<div class="skill-dot dot-yellow" data-tooltip="${esc(issueTooltip)}"></div>` : ''}
       <span class="mp-tag tag-command">cmd</span>
       <span class="component-row-name">${invocation}</span>
       ${noModel ? `<span class="mp-tag tag-command" style="cursor:pointer" data-tooltip="Only invocable via slash command — agents cannot trigger this skill automatically" data-abs-path="${esc(cmd.abs_path)}" onclick="event.stopPropagation(); toggleModelInvocation(this)">manual</span>` : ''}
       ${modelBadge(model)}
       <span class="component-row-desc">${esc(cmd.description || '')}</span>
+      ${budgetBarHtml(chars)}
       <div class="component-detail">
         ${cmd.description ? `<div style="margin-bottom:6px">${esc(cmd.description)}</div>` : ''}
         <div><strong>Invocation:</strong> ${invocation}</div>
         ${model ? `<div><strong>Model:</strong> ${esc(model)}</div>` : ''}
         <div><strong>Budget cost:</strong> ${chars.toLocaleString()} chars</div>
         ${noModel ? '<div><strong>Model invocation:</strong> disabled (manual only)</div>' : ''}
+        ${hasIssues ? `<div class="detail-warning warn-yellow" style="margin-top:8px">${issueMessages.join('<br>')}</div>` : ''}
         ${cmd.abs_path ? `<div style="margin-top:6px;font-size:10px;color:var(--text-muted)">${esc(cmd.abs_path)}</div>` : ''}
         ${renderFrontmatter(cmd)}
       </div>
@@ -1647,8 +1798,13 @@ async function fetchMarketplaces() {
 }
 
 function mpSourceTag(type) {
-  const cls = {git: 'tag-git', github: 'tag-github', directory: 'tag-dir'}[type] || 'tag-cache';
-  return `<span class="mp-tag ${cls}">${esc(type)}</span>`;
+  if (type === 'git' || type === 'github') {
+    return `<span class="mp-tag tag-git">git</span>`;
+  }
+  if (type === 'directory') {
+    return `<span class="mp-tag tag-dir">local</span>`;
+  }
+  return `<span class="mp-tag tag-cache">${esc(type)}</span>`;
 }
 
 function renderMarketplaceRow(mp) {
@@ -1657,23 +1813,43 @@ function renderMarketplaceRow(mp) {
     : '';
   const gitInfo = mp.branch && mp.short_sha ? `${mp.branch}@${mp.short_sha}` : '';
   const healthWarning = !mp.exists ? '<span class="mp-row-warning">dir not found</span>' : '';
+  const mpRowId = `mp-detail-${mp.name.replace(/[^a-zA-Z0-9-]/g, '_')}`;
+
+  // Detail panel content
+  const detailParts = [
+    `<div><strong>Name:</strong> ${esc(mp.name)}</div>`,
+    `<div><strong>Source type:</strong> ${esc(mp.source_type)}</div>`,
+    mp.url ? `<div><strong>URL:</strong> <a href="${esc(mp.url.startsWith('http') ? mp.url : '')}" target="_blank" style="color:var(--blue);text-decoration:none">${esc(mp.url)}</a></div>` : '',
+    mp.install_location ? `<div><strong>Install path:</strong> <span style="word-break:break-all">${esc(mp.install_location)}</span></div>` : '',
+    `<div><strong>Plugins:</strong> ${mp.plugin_count}</div>`,
+    mp.branch ? `<div><strong>Branch:</strong> ${esc(mp.branch)}</div>` : '',
+    mp.short_sha ? `<div><strong>Commit:</strong> ${esc(mp.short_sha)}</div>` : '',
+    mp.last_updated ? `<div><strong>Last updated:</strong> ${esc(mp.last_updated)}</div>` : '',
+    !mp.exists ? `<div style="color:var(--red);margin-top:4px"><strong>Warning:</strong> Install directory not found on disk</div>` : '',
+  ].filter(Boolean).join('\n');
+
   return `
-    <div class="mp-row" data-mp-name="${esc(mp.name)}">
-      ${mpSourceTag(mp.source_type)}
-      <span class="mp-row-name">${esc(mp.name)}</span>
-      ${healthWarning}
-      <span class="mp-row-url" title="${esc(mp.url)}">${esc(mp.url)}</span>
-      <span class="mp-row-meta">
-        <span>${mp.plugin_count} plugin${mp.plugin_count !== 1 ? 's' : ''}</span>
-        ${gitInfo ? `<span>${esc(gitInfo)}</span>` : ''}
-        ${mp.date_short ? `<span>${esc(mp.date_short)}</span>` : ''}
-      </span>
-      <div class="mp-row-actions">
-        ${pullBtn}
-        <button class="mp-action-btn btn-remove" data-mp-name="${esc(mp.name)}" onclick="event.stopPropagation(); removeMarketplace(this)">remove</button>
+    <div class="mp-row-wrap" id="${esc(mpRowId)}">
+      <div class="mp-row" data-mp-name="${esc(mp.name)}" onclick="document.getElementById('${esc(mpRowId)}').classList.toggle('mp-row-expanded')">
+        ${mpSourceTag(mp.source_type)}
+        <span class="mp-row-name">${esc(mp.name)}</span>
+        ${healthWarning}
+        <span class="mp-row-url" title="${esc(mp.url)}">${esc(mp.url)}</span>
+        <span class="mp-row-meta">
+          <span>${mp.plugin_count} plugin${mp.plugin_count !== 1 ? 's' : ''}</span>
+          ${gitInfo ? `<span>${esc(gitInfo)}</span>` : ''}
+          ${mp.date_short ? `<span>${esc(mp.date_short)}</span>` : ''}
+        </span>
+        <div class="mp-row-actions">
+          ${pullBtn}
+          <button class="mp-action-btn btn-remove" data-mp-name="${esc(mp.name)}" onclick="event.stopPropagation(); removeMarketplace(this)">remove</button>
+        </div>
       </div>
+      <div class="mp-row-detail">
+        ${detailParts}
+      </div>
+      <div class="inline-error hidden" data-mp-error="${esc(mp.name)}"></div>
     </div>
-    <div class="inline-error hidden" data-mp-error="${esc(mp.name)}"></div>
   `;
 }
 
@@ -1693,9 +1869,18 @@ function renderMarketplacesSection(mpData) {
       </div>
       <div class="marketplace-body">
         ${mpData.map(renderMarketplaceRow).join('')}
-        <div class="mp-add-row">
-          <input type="text" class="mp-add-input" id="mpAddInput" placeholder="git URL, owner/repo, or /path/to/dir">
-          <button class="mp-action-btn btn-add" onclick="addMarketplace()">add</button>
+        <div style="margin-top:12px;padding:12px 12px 12px 38px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);margin-bottom:8px">
+            Add a marketplace — accepts any of these formats:
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);margin-bottom:10px;line-height:1.8">
+            <span class="mp-tag tag-git" style="margin-right:4px">Git repo</span> owner/repo <span style="opacity:0.5">or</span> https://github.com/org/repo.git &nbsp;&nbsp;
+            <span class="mp-tag tag-dir" style="margin-right:4px">Local dir</span> /absolute/path/to/plugins
+          </div>
+          <div class="mp-add-row" style="padding:0">
+            <input type="text" class="mp-add-input" id="mpAddInput" placeholder="e.g. anthropics/claude-plugins-official">
+            <button class="mp-action-btn btn-add" onclick="addMarketplace()">add marketplace</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1706,6 +1891,7 @@ async function addMarketplace() {
   const input = document.getElementById('mpAddInput');
   const url = input.value.trim();
   if (!url) return;
+  if (!await modalConfirm(`Add marketplace?\n\n${url}\n\nThis will clone the repository and make its plugins available for installation.`)) return;
   input.disabled = true;
   const addBtn = input.nextElementSibling;
   addBtn.disabled = true;
@@ -1871,7 +2057,54 @@ function renderAll(data, mpData) {
     `).join('');
   }
 
-  // Installed section
+  // Installed section — grouped by marketplace
+  const mpGroups = new Map();  // marketplace name -> [groups]
+  for (const g of data.installed) {
+    const key = g.marketplace || (g.source === 'local' ? '_local' : '_local-plugin');
+    if (!mpGroups.has(key)) mpGroups.set(key, []);
+    mpGroups.get(key).push(g);
+  }
+
+  // Sort: local first, then local-plugin, then marketplaces alphabetically
+  const sortedKeys = [...mpGroups.keys()].sort((a, b) => {
+    if (a === '_local') return -1;
+    if (b === '_local') return 1;
+    if (a === '_local-plugin') return -1;
+    if (b === '_local-plugin') return 1;
+    return a.localeCompare(b);
+  });
+
+  let installedBody = missingHtml;
+  for (const key of sortedKeys) {
+    const groups = mpGroups.get(key);
+    if (key === '_local') {
+      installedBody += groups.map(renderInstalledGroup).join('');
+    } else if (key === '_local-plugin') {
+      installedBody += `<div class="component-section-header" style="border-top:none;margin-top:12px;padding-left:8px;font-size:13px">
+        <span class="mp-tag tag-direct" style="font-size:12px">local plugins</span>
+        <span>${groups.length} plugin${groups.length !== 1 ? 's' : ''}</span>
+      </div>`;
+      installedBody += groups.map(renderInstalledGroup).join('');
+    } else {
+      const totalSkills = groups.reduce((a, g) => a + g.skills.filter(s => s.loaded !== false).length, 0);
+      const repoUrl = groups.find(g => g.repo_url)?.repo_url || '';
+      const mpId = `mp-installed-${key.replace(/[^a-zA-Z0-9-]/g, '_')}`;
+      installedBody += `<div class="mp-subheader-wrap" id="${esc(mpId)}">
+        <div class="component-section-header mp-subheader-clickable" style="border-top:none;margin-top:12px;padding-left:8px;font-size:13px;cursor:pointer" onclick="document.getElementById('${esc(mpId)}').classList.toggle('mp-subheader-expanded')">
+          <span class="mp-tag tag-marketplace" style="font-size:12px">${esc(key)}</span>
+          <span>${groups.length} plugin${groups.length !== 1 ? 's' : ''} &middot; ${totalSkills} skills</span>
+          ${repoUrl ? `<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">click for details</span>` : ''}
+        </div>
+        <div class="mp-subheader-detail">
+          ${repoUrl ? `<div><strong>Repository:</strong> <a href="${esc(repoUrl)}" target="_blank" style="color:var(--blue);text-decoration:none">${esc(repoUrl)}</a></div>` : ''}
+          <div><strong>Plugins:</strong> ${groups.map(g => esc(g.name)).join(', ')}</div>
+          <div><strong>Total skills:</strong> ${totalSkills}</div>
+        </div>
+      </div>`;
+      installedBody += groups.map(renderInstalledGroup).join('');
+    }
+  }
+
   html += `<div class="marketplace section" data-source="installed">
     <div class="marketplace-header" onclick="this.parentElement.classList.toggle('collapsed')">
       <span class="mp-chevron">&#9660;</span>
@@ -1880,23 +2113,57 @@ function renderAll(data, mpData) {
       <span class="mp-counts">${data.installed.length} groups &middot; ${data.stats.loaded_files} skills</span>
     </div>
     <div class="marketplace-body">
-      ${missingHtml}
-      ${data.installed.map(renderInstalledGroup).join('')}
+      ${installedBody}
     </div>
   </div>`;
 
-  // Available section
+  // Available section — grouped by marketplace
   if (data.available.length) {
     const totalAvail = data.available.reduce((a, p) => a + p.skill_count, 0);
+
+    const availMpGroups = new Map();
+    for (const p of data.available) {
+      const key = p.marketplace || '_other';
+      if (!availMpGroups.has(key)) availMpGroups.set(key, []);
+      availMpGroups.get(key).push(p);
+    }
+    const availSortedKeys = [...availMpGroups.keys()].sort((a, b) => {
+      if (a === '_other') return 1;
+      if (b === '_other') return -1;
+      return a.localeCompare(b);
+    });
+
+    let availBody = '';
+    for (const key of availSortedKeys) {
+      const plugins = availMpGroups.get(key);
+      const totalSkills = plugins.reduce((a, p) => a + p.skill_count, 0);
+      const repoUrl = plugins.find(p => p.repo_url)?.repo_url || '';
+      const mpId = `mp-avail-${key.replace(/[^a-zA-Z0-9-]/g, '_')}`;
+      if (key !== '_other') {
+        availBody += `<div class="mp-subheader-wrap" id="${esc(mpId)}">
+          <div class="component-section-header mp-subheader-clickable" style="border-top:none;margin-top:12px;padding-left:8px;font-size:13px;cursor:pointer" onclick="document.getElementById('${esc(mpId)}').classList.toggle('mp-subheader-expanded')">
+            <span class="mp-tag tag-marketplace" style="font-size:12px">${esc(key)}</span>
+            <span>${plugins.length} plugin${plugins.length !== 1 ? 's' : ''} &middot; ${totalSkills} skills</span>
+            ${repoUrl ? `<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">click for details</span>` : ''}
+          </div>
+          <div class="mp-subheader-detail">
+            ${repoUrl ? `<div><strong>Repository:</strong> <a href="${esc(repoUrl)}" target="_blank" style="color:var(--blue);text-decoration:none">${esc(repoUrl)}</a></div>` : ''}
+            <div><strong>Available plugins:</strong> ${plugins.map(p => esc(p.name)).join(', ')}</div>
+          </div>
+        </div>`;
+      }
+      availBody += plugins.map(renderAvailableGroup).join('');
+    }
+
     html += `<div class="marketplace section" data-source="available">
       <div class="marketplace-header" onclick="this.parentElement.classList.toggle('collapsed')">
         <span class="mp-chevron">&#9660;</span>
         <span class="mp-name">Available</span>
-        <span class="mp-tag tag-marketplace">not loaded</span>
+        <span class="mp-tag tag-marketplace">not installed</span>
         <span class="mp-counts">${data.available.length} plugins &middot; ${totalAvail} skills</span>
       </div>
       <div class="marketplace-body">
-        ${data.available.map(renderAvailableGroup).join('')}
+        ${availBody}
       </div>
     </div>`;
   }
@@ -1949,6 +2216,7 @@ function bindCheckboxes(content) {
       }
       row.style.opacity = '';
       updatePluginCheckbox(cb.closest('.plugin'));
+      recalcBudget();
     });
   });
 
@@ -1978,6 +2246,7 @@ function bindCheckboxes(content) {
       });
       await Promise.all(promises);
       plugin.style.opacity = '';
+      recalcBudget();
     });
   });
 }
@@ -2314,6 +2583,8 @@ function applyFilter() {
   document.querySelectorAll('.component-section').forEach(s => s.classList.remove('hidden'));
   document.querySelectorAll('.unscanned-section').forEach(s => s.classList.remove('hidden'));
   document.querySelectorAll('.component-row').forEach(r => r.classList.remove('hidden'));
+  document.querySelectorAll('.mp-subheader-wrap').forEach(s => s.classList.remove('hidden'));
+  document.querySelectorAll('.marketplace-body > .component-section-header').forEach(s => s.classList.remove('hidden'));
 
   // Hide marketplaces section by default (unless marketplaces filter active)
   if (activeFilter !== 'marketplaces') {
@@ -2336,7 +2607,14 @@ function applyFilter() {
     document.querySelectorAll('[data-source="installed"] .skill').forEach(s => {
       if (s.dataset.hasIssues !== 'true') s.classList.add('hidden');
     });
-    document.querySelectorAll('[data-source="installed"] .component-section').forEach(s => s.classList.add('hidden'));
+    // Hide non-command component sections; filter command rows by issues
+    document.querySelectorAll('[data-source="installed"] .component-section').forEach(s => {
+      const tag = s.querySelector('.mp-tag');
+      if (tag && tag.textContent.trim() !== 'Commands') s.classList.add('hidden');
+    });
+    document.querySelectorAll('[data-source="installed"] .component-row[data-component-type="command"]').forEach(r => {
+      if (r.dataset.hasIssues !== 'true') r.classList.add('hidden');
+    });
     document.querySelectorAll('[data-source="installed"] .unscanned-section').forEach(s => s.classList.add('hidden'));
   } else if (activeFilter === 'stale') {
     document.querySelector('[data-source="available"]')?.classList.add('hidden');
@@ -2378,6 +2656,35 @@ function applyFilter() {
     const visSkills = p.querySelectorAll('.plugin-body > .skill:not(.hidden)');
     const visComponents = p.querySelectorAll('.component-section:not(.hidden) .component-row:not(.hidden)');
     if (visSkills.length === 0 && visComponents.length === 0) p.classList.add('hidden');
+  });
+
+  // Hide marketplace subheaders when all their plugins are hidden
+  document.querySelectorAll('.mp-subheader-wrap').forEach(wrap => {
+    // Find the next sibling plugins until the next subheader or end
+    let hasVisible = false;
+    let sibling = wrap.nextElementSibling;
+    while (sibling && !sibling.classList.contains('mp-subheader-wrap') && !sibling.classList.contains('component-section-header')) {
+      if (sibling.classList.contains('plugin') && !sibling.classList.contains('hidden')) {
+        hasVisible = true;
+        break;
+      }
+      sibling = sibling.nextElementSibling;
+    }
+    wrap.classList.toggle('hidden', !hasVisible);
+  });
+
+  // Also hide local-plugin subheaders when empty (only direct children of marketplace-body)
+  document.querySelectorAll('.marketplace-body > .component-section-header').forEach(hdr => {
+    let hasVisible = false;
+    let sibling = hdr.nextElementSibling;
+    while (sibling && !sibling.classList.contains('mp-subheader-wrap') && !(sibling.classList.contains('component-section-header') && sibling.parentElement.classList.contains('marketplace-body'))) {
+      if (sibling.classList.contains('plugin') && !sibling.classList.contains('hidden')) {
+        hasVisible = true;
+        break;
+      }
+      sibling = sibling.nextElementSibling;
+    }
+    hdr.classList.toggle('hidden', !hasVisible);
   });
 
   sections.forEach(s => {

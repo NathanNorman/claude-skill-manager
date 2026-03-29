@@ -1037,7 +1037,8 @@ def get_all_data() -> dict:
     for gi, g in enumerate(installed_groups):
         pri = PRIORITY.get(g["source"], 3)
         for s in g["skills"]:
-            key = s["name"]
+            # Separate namespace for skills vs commands (same name is valid across types)
+            key = (s["name"], s.get("source_type", "skill"))
             name_entries.setdefault(key, []).append((pri, gi, s))
 
     for key, entries in name_entries.items():
