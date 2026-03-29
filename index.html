@@ -361,6 +361,17 @@
   .check-updates-btn:hover { border-color: var(--blue); color: var(--blue); }
   .check-updates-btn:disabled { opacity: 0.5; cursor: wait; }
   .tab-count { opacity: 0.6; font-size: 10px; }
+  .hide-disabled-toggle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .hide-disabled-toggle input { margin: 0; }
 
   .update-banner {
     padding: 10px 14px;
@@ -895,6 +906,16 @@
     margin-top: 4px;
   }
 
+  .component-section-toggle { cursor: pointer; }
+  .component-section-toggle:hover { color: var(--text-dim); }
+  .component-chevron {
+    font-size: 8px;
+    transition: transform 0.15s;
+    display: inline-block;
+  }
+  .component-collapsed .component-chevron { transform: rotate(-90deg); }
+  .component-collapsed .component-section-body { display: none; }
+
   /* Inline error display */
   .inline-error {
     font-family: 'JetBrains Mono', monospace;
@@ -1193,6 +1214,9 @@
     <button class="filter-btn" data-filter="stale">Updates</button>
     <button class="filter-btn" data-filter="marketplaces">Marketplaces</button>
     <input type="text" class="search" id="search" placeholder="Search skills...">
+    <label class="hide-disabled-toggle" title="Hide disabled skills, commands, and agents">
+      <input type="checkbox" id="hideDisabled" onchange="toggleHideDisabled(this.checked)"> hide disabled
+    </label>
   </div>
 
   <div id="updateBanner"></div>
@@ -1206,6 +1230,23 @@
 let DATA = null;
 let activeFilter = 'all';
 let showBudgetBars = true;
+let hideDisabled = localStorage.getItem('sm-hideDisabled') === 'true';
+
+// Persist collapse states in localStorage
+function saveCollapseState(key, collapsed) {
+  const states = JSON.parse(localStorage.getItem('sm-collapseStates') || '{}');
+  states[key] = collapsed;
+  localStorage.setItem('sm-collapseStates', JSON.stringify(states));
+}
+function getCollapseStates() {
+  return JSON.parse(localStorage.getItem('sm-collapseStates') || '{}');
+}
+
+function toggleHideDisabled(checked) {
+  hideDisabled = checked;
+  localStorage.setItem('sm-hideDisabled', checked);
+  applyFilter();
+}
 
 function budgetBarHtml(chars) {
   if (!chars || chars <= 0) return '';
@@ -1598,7 +1639,7 @@ function renderInstalledGroup(group) {
     <div class="plugin" data-installed="true" data-plugin="${esc(group.name)}">
       <div class="plugin-header" onclick="this.closest('.plugin').classList.toggle('plugin-expanded')">
         <input type="checkbox" class="plugin-check" onclick="event.stopPropagation()" ${pluginChecked} ${pluginIndet}>
-        <span class="plugin-chevron" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('collapsed')">&#9660;</span>
+        <span class="plugin-chevron" onclick="event.stopPropagation(); togglePluginCollapse(this.closest('.plugin'))">&#9660;</span>
         <span class="plugin-name">${esc(group.name)}</span>
         ${versionBadge}
         ${showSourceTag ? sourceTag(group.source, group.marketplace) : ''}
@@ -1627,10 +1668,10 @@ function renderInstalledGroup(group) {
             </div>
           </div>`;
         })()}
-        ${renderComponentSection('Commands', 'tag-command', group.skills.filter(s => s.source_type === 'command'), renderCommandRow)}
-        ${renderComponentSection('Agents', 'tag-agent', group.agents, renderAgentRow)}
-        ${renderComponentSection('Hooks', 'tag-hook', group.hooks, renderHookRow)}
-        ${renderComponentSection('MCP Servers', 'tag-mcp', group.mcp_servers, renderMcpServerRow)}
+        ${renderComponentSection('Commands', 'tag-command', group.skills.filter(s => s.source_type === 'command'), renderCommandRow, group.name)}
+        ${renderComponentSection('Agents', 'tag-agent', group.agents, renderAgentRow, group.name)}
+        ${renderComponentSection('Hooks', 'tag-hook', group.hooks, renderHookRow, group.name)}
+        ${renderComponentSection('MCP Servers', 'tag-mcp', group.mcp_servers, renderMcpServerRow, group.name)}
       </div>
     </div>
   `;
@@ -1648,7 +1689,7 @@ function renderAvailableGroup(plugin) {
     <div class="plugin" data-installed="false" data-plugin="${esc(plugin.name)}">
       <div class="plugin-header" onclick="this.closest('.plugin').classList.toggle('plugin-expanded')">
         <div style="width:16px"></div>
-        <span class="plugin-chevron" onclick="event.stopPropagation(); this.closest('.plugin').classList.toggle('collapsed')">&#9660;</span>
+        <span class="plugin-chevron" onclick="event.stopPropagation(); togglePluginCollapse(this.closest('.plugin'))">&#9660;</span>
         <span class="plugin-name">${esc(plugin.name)}</span>
         <span class="plugin-skill-count">${plugin.skill_count} skill${plugin.skill_count !== 1 ? 's' : ''}</span>
         <button class="install-btn" data-plugin-id="${esc(plugin.plugin_id)}" onclick="event.stopPropagation(); installPlugin(this)">install</button>
@@ -1783,17 +1824,36 @@ function renderMcpServerRow(server) {
   `;
 }
 
-function renderComponentSection(label, tagClass, items, renderFn) {
+function renderComponentSection(label, tagClass, items, renderFn, parentName) {
   if (!items || items.length === 0) return '';
+  const collapseKey = `${parentName || ''}:${label}`;
+  const states = getCollapseStates();
+  const collapsed = states[collapseKey] ? 'component-collapsed' : '';
   return `
-    <div class="component-section">
-      <div class="component-section-header">
+    <div class="component-section ${collapsed}" data-collapse-key="${esc(collapseKey)}">
+      <div class="component-section-header component-section-toggle" onclick="toggleComponentSection(this)">
+        <span class="component-chevron">&#9660;</span>
         <span class="mp-tag ${tagClass}">${esc(label)}</span>
         <span>${items.length}</span>
       </div>
-      ${items.map(renderFn).join('')}
+      <div class="component-section-body">
+        ${items.map(renderFn).join('')}
+      </div>
     </div>
   `;
+}
+
+function toggleComponentSection(header) {
+  const section = header.parentElement;
+  section.classList.toggle('component-collapsed');
+  const key = section.dataset.collapseKey;
+  if (key) saveCollapseState(key, section.classList.contains('component-collapsed'));
+}
+
+function togglePluginCollapse(pluginEl) {
+  pluginEl.classList.toggle('collapsed');
+  const name = pluginEl.dataset.plugin;
+  if (name) saveCollapseState('plugin:' + name, pluginEl.classList.contains('collapsed'));
 }
 
 // --- Marketplace registry functions ---
@@ -2185,6 +2245,7 @@ function renderAll(data, mpData) {
   bindCheckboxes(content);
   bindRowExpand(content);
   updateTabCounts(data);
+  restoreCollapseStates(content);
 }
 
 function updateTabCounts(data) {
@@ -2204,6 +2265,18 @@ function updateTabCounts(data) {
       btn.insertAdjacentHTML('beforeend', ` <span class="tab-count">(${count})</span>`);
     }
   });
+}
+
+function restoreCollapseStates(content) {
+  const states = getCollapseStates();
+  // Restore plugin collapse states
+  content.querySelectorAll('.plugin[data-plugin]').forEach(el => {
+    const key = 'plugin:' + el.dataset.plugin;
+    if (states[key]) el.classList.add('collapsed');
+  });
+  // Restore hide-disabled checkbox
+  const cb = document.getElementById('hideDisabled');
+  if (cb) cb.checked = hideDisabled;
 }
 
 function bindRowExpand(content) {
@@ -2678,6 +2751,17 @@ function applyFilter() {
     const vis = s.querySelectorAll('.plugin:not(.hidden)');
     if (vis.length === 0 && !s.classList.contains('hidden')) s.classList.add('hidden');
   });
+
+  // Hide disabled items if toggle is on
+  if (hideDisabled) {
+    document.querySelectorAll('.skill').forEach(s => {
+      const cb = s.querySelector('.skill-check');
+      if (cb && !cb.checked) s.classList.add('hidden');
+    });
+    document.querySelectorAll('.component-row').forEach(r => {
+      if (r.classList.contains('component-disabled')) r.classList.add('hidden');
+    });
+  }
 
   // Empty state messages for filtered tabs
   const emptyMsgs = {
