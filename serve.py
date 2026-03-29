@@ -15,6 +15,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -1195,9 +1196,10 @@ def get_marketplace_data() -> list[dict]:
 def refresh_and_check_updates() -> dict:
     """Pull latest marketplace repos and compare versions with installed plugins."""
     if not MARKETPLACES_DIR.is_dir():
-        return {"updates": [], "errors": []}
+        return {"updates": [], "errors": [], "pulled_changes": False}
 
     errors = []
+    pulled_changes = False
 
     # Git pull each marketplace
     for mp_dir in sorted(MARKETPLACES_DIR.iterdir()):
@@ -1206,12 +1208,19 @@ def refresh_and_check_updates() -> dict:
         git_dir = mp_dir / ".git"
         if git_dir.is_dir():
             try:
+                # Stash any local changes that would block pull
+                subprocess.run(
+                    ["git", "-C", str(mp_dir), "stash", "--quiet"],
+                    capture_output=True, text=True, timeout=10
+                )
                 result = subprocess.run(
                     ["git", "-C", str(mp_dir), "pull", "--ff-only"],
                     capture_output=True, text=True, timeout=30
                 )
                 if result.returncode != 0:
                     errors.append(f"{mp_dir.name}: git pull failed: {result.stderr.strip()}")
+                elif "Already up to date" not in result.stdout:
+                    pulled_changes = True
             except Exception as e:
                 errors.append(f"{mp_dir.name}: {str(e)}")
 
@@ -1248,7 +1257,10 @@ def refresh_and_check_updates() -> dict:
                     "available_version": str(mp_version),
                 })
 
-    return {"updates": updates, "errors": errors}
+    if pulled_changes:
+        _invalidate_skills_cache()
+
+    return {"updates": updates, "errors": errors, "pulled_changes": pulled_changes}
 
 
 def toggle_component_enabled(abs_path: str, enabled: bool) -> dict:
@@ -1351,6 +1363,8 @@ def _cache_key() -> tuple:
         _mtime(PREFS_FILE),
         _mtime(SETTINGS_FILE),
         _mtime(KNOWN_MARKETPLACES_FILE),
+        _mtime(SKILLS_DIR),
+        _mtime(CACHE_DIR),
     )
 
 
@@ -1624,8 +1638,19 @@ class Handler(SimpleHTTPRequestHandler):
         pass  # Quiet
 
 
+def _pull_marketplaces_background():
+    """Pull marketplace repos in background so data is fresh on first page load."""
+    try:
+        result = refresh_and_check_updates()
+        if result.get("pulled_changes"):
+            print("Marketplace repos updated in background.")
+    except Exception:
+        pass  # Non-critical; user can still manually refresh
+
+
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    threading.Thread(target=_pull_marketplaces_background, daemon=True).start()
     server = HTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Skill Manager running at http://127.0.0.1:{PORT}")
     try:

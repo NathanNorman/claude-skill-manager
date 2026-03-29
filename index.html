@@ -355,11 +355,12 @@
     color: var(--text-dim);
     cursor: pointer;
     transition: all 0.15s;
-    margin-left: auto;
+    margin-bottom: 8px;
   }
 
   .check-updates-btn:hover { border-color: var(--blue); color: var(--blue); }
   .check-updates-btn:disabled { opacity: 0.5; cursor: wait; }
+  .tab-count { opacity: 0.6; font-size: 10px; }
 
   .update-banner {
     padding: 10px 14px;
@@ -1074,6 +1075,14 @@
     left: 0;
     transform: none;
   }
+  /* Budget bar tooltip: show below and anchor to right edge */
+  .budget-bar-wrap[data-tooltip]::after {
+    bottom: auto;
+    top: calc(100% + 6px);
+    left: auto;
+    right: 0;
+    transform: none;
+  }
 
   /* Plugin detail panel */
   .plugin-detail {
@@ -1184,7 +1193,6 @@
     <button class="filter-btn" data-filter="stale">Updates</button>
     <button class="filter-btn" data-filter="marketplaces">Marketplaces</button>
     <input type="text" class="search" id="search" placeholder="Search skills...">
-    <button class="check-updates-btn" id="checkUpdatesBtn" onclick="installUpdates()">Install updates</button>
   </div>
 
   <div id="updateBanner"></div>
@@ -1202,7 +1210,7 @@ let showBudgetBars = true;
 function budgetBarHtml(chars) {
   if (!chars || chars <= 0) return '';
   const cls = chars < 150 ? 'budget-low' : chars < 300 ? 'budget-med' : chars < 450 ? 'budget-high' : 'budget-extreme';
-  return `<div class="skill-budget-bar ${cls}" data-tooltip="${chars.toLocaleString()} chars"><div class="skill-budget-fill"></div></div>`;
+  return `<div class="skill-budget-bar ${cls}" data-chars="${chars}" data-tooltip="${chars.toLocaleString()} chars"><div class="skill-budget-fill"></div></div>`;
 }
 
 function recalcBudget() {
@@ -1215,7 +1223,7 @@ function recalcBudget() {
       // Find the budget bar tooltip to get chars, or use data
       const bar = row.querySelector('.skill-budget-bar');
       if (bar) {
-        const chars = parseInt(bar.dataset.tooltip) || 0;
+        const chars = parseInt(bar.dataset.chars) || 0;
         total += chars;
       }
     }
@@ -1225,7 +1233,7 @@ function recalcBudget() {
     const cb = row.querySelector('.component-check');
     if (cb && cb.checked) {
       const bar = row.querySelector('.skill-budget-bar');
-      if (bar) total += parseInt(bar.dataset.tooltip) || 0;
+      if (bar) total += parseInt(bar.dataset.chars) || 0;
     }
   });
   const budget = DATA.stats.budget;
@@ -2176,6 +2184,26 @@ function renderAll(data, mpData) {
   content.innerHTML = html;
   bindCheckboxes(content);
   bindRowExpand(content);
+  updateTabCounts(data);
+}
+
+function updateTabCounts(data) {
+  const counts = {
+    issues: data.stats.total_issues,
+    duplicates: data.stats.duplicate_copies,
+    stale: data.installed.filter(g => g.has_update === true).length,
+    available: data.available.reduce((n, g) => n + (g.skills || []).length, 0),
+  };
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    const f = btn.dataset.filter;
+    const count = counts[f];
+    // Remove any existing badge
+    const existing = btn.querySelector('.tab-count');
+    if (existing) existing.remove();
+    if (count != null && count > 0) {
+      btn.insertAdjacentHTML('beforeend', ` <span class="tab-count">(${count})</span>`);
+    }
+  });
 }
 
 function bindRowExpand(content) {
@@ -2360,83 +2388,33 @@ async function removeLocalPlugin(btn) {
   }
 }
 
-async function installUpdates() {
+async function refreshMarketplaces() {
   const btn = document.getElementById('checkUpdatesBtn');
   const banner = document.getElementById('updateBanner');
   btn.disabled = true;
-  btn.textContent = 'Checking...';
-  banner.innerHTML = '';
+  btn.textContent = 'Pulling...';
 
   try {
-    // Step 1: Check for updates
     const res = await fetch('/api/check-updates', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
     const data = await res.json();
 
     if (data.errors && data.errors.length > 0) {
-      banner.innerHTML += `<div class="update-banner" style="color:#8B5E00;border-color:#F5A623;background:#FFF8E1;">${data.errors.map(e => esc(e)).join('<br>')}</div>`;
-    }
-
-    if (!data.updates || data.updates.length === 0) {
-      banner.innerHTML = `<div class="update-banner" style="color:var(--green);border-color:var(--green);background:#E8F7D4;">All plugins are up to date.</div>`;
-      setTimeout(() => { banner.innerHTML = ''; }, 4000);
-      btn.textContent = 'Install updates';
-      btn.disabled = false;
+      banner.innerHTML = `<button class="check-updates-btn" id="checkUpdatesBtn" onclick="refreshMarketplaces()">Refresh marketplaces</button>
+        <div class="update-banner" style="color:#8B5E00;border-color:#F5A623;background:#FFF8E1;">${data.errors.map(e => esc(e)).join('<br>')}</div>`;
       return;
     }
 
-    // Step 2: Auto-install all updates
-    const total = data.updates.length;
-    let installed = 0;
-    let failed = [];
-
-    banner.innerHTML += `<div class="update-banner" id="updateProgress">
-      <div style="margin-bottom:6px;font-weight:600">Installing ${total} update${total > 1 ? 's' : ''}...</div>
-      ${data.updates.map(u => `<div class="update-banner-row" id="update-row-${esc(u.plugin_id.replace(/[@.]/g, '-'))}">
-        <span class="plugin-name-text">${esc(u.name)}</span>
-        <span class="version-info">${esc(u.installed_version)} &rarr; ${esc(u.available_version)}</span>
-        <span class="update-status" style="margin-left:auto;font-size:11px;color:var(--text-muted)">waiting...</span>
-      </div>`).join('')}
-    </div>`;
-
-    btn.textContent = `Updating 0/${total}...`;
-
-    for (const u of data.updates) {
-      const rowId = `update-row-${u.plugin_id.replace(/[@.]/g, '-')}`;
-      const statusEl = document.querySelector(`#${CSS.escape(rowId)} .update-status`);
-      if (statusEl) { statusEl.textContent = 'installing...'; statusEl.style.color = 'var(--blue)'; }
-
-      try {
-        const ures = await fetch('/api/update-plugin', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({plugin_id: u.plugin_id})
-        });
-        const udata = await ures.json();
-        if (udata.ok) {
-          installed++;
-          if (statusEl) { statusEl.textContent = 'done'; statusEl.style.color = 'var(--green)'; }
-        } else {
-          failed.push(u.name);
-          if (statusEl) { statusEl.textContent = 'failed'; statusEl.style.color = 'var(--red)'; }
-        }
-      } catch (e) {
-        failed.push(u.name);
-        if (statusEl) { statusEl.textContent = 'error'; statusEl.style.color = 'var(--red)'; }
-      }
-      btn.textContent = `Updating ${installed + failed.length}/${total}...`;
-    }
-
-    // Step 3: Show results
-    if (failed.length === 0) {
-      btn.textContent = `Updated ${installed} plugin${installed > 1 ? 's' : ''}!`;
-      setTimeout(() => location.reload(), 1500);
+    if (data.pulled_changes || (data.updates && data.updates.length > 0)) {
+      banner.innerHTML = `<div class="update-banner" style="color:var(--green);border-color:var(--green);background:#E8F7D4;">Marketplace data refreshed. Reloading...</div>`;
+      setTimeout(() => location.reload(), 1000);
     } else {
-      btn.textContent = 'Install updates';
-      btn.disabled = false;
-      modalAlert(`Failed to update: ${failed.join(', ')}`);
+      banner.innerHTML = `<button class="check-updates-btn" id="checkUpdatesBtn" onclick="refreshMarketplaces()">Refresh marketplaces</button>
+        <div class="update-banner" style="color:var(--green);border-color:var(--green);background:#E8F7D4;">Already up to date.</div>`;
+      setTimeout(() => { document.querySelector('#updateBanner .update-banner')?.remove(); }, 3000);
     }
   } catch (e) {
-    banner.innerHTML = `<div class="update-banner" style="color:var(--red);border-color:var(--red);background:#FFE6E9;">Error: ${esc(e.message)}</div>`;
+    banner.innerHTML = `<button class="check-updates-btn" id="checkUpdatesBtn" onclick="refreshMarketplaces()">Refresh marketplaces</button>
+      <div class="update-banner" style="color:var(--red);border-color:var(--red);background:#FFE6E9;">Error: ${esc(e.message)}</div>`;
     btn.textContent = 'Install updates';
     btn.disabled = false;
   }
@@ -2474,6 +2452,7 @@ async function toggleComponent(cb) {
     cb.checked = !enabled;
   }
   row.style.opacity = '';
+  recalcBudget();
 }
 
 async function upgradePlugin(badge) {
@@ -2577,6 +2556,10 @@ function applyFilter() {
   const plugins = document.querySelectorAll('.plugin');
   const query = document.getElementById('search').value.toLowerCase().trim();
 
+  // Clear update banner when leaving Updates tab
+  const banner = document.getElementById('updateBanner');
+  if (banner && activeFilter !== 'stale') banner.innerHTML = '';
+
   sections.forEach(s => s.classList.remove('hidden'));
   plugins.forEach(p => p.classList.remove('hidden'));
   document.querySelectorAll('.skill').forEach(s => s.classList.remove('hidden'));
@@ -2623,6 +2606,9 @@ function applyFilter() {
     });
     document.querySelectorAll('[data-source="installed"] .component-section').forEach(s => s.classList.add('hidden'));
     document.querySelectorAll('[data-source="installed"] .unscanned-section').forEach(s => s.classList.add('hidden'));
+    // Show refresh button in update banner
+    const banner = document.getElementById('updateBanner');
+    if (banner) banner.innerHTML = `<button class="check-updates-btn" id="checkUpdatesBtn" onclick="refreshMarketplaces()">Refresh marketplaces</button>`;
   } else if (activeFilter === 'marketplaces') {
     document.querySelector('[data-source="installed"]')?.classList.add('hidden');
     document.querySelector('[data-source="available"]')?.classList.add('hidden');
@@ -2692,6 +2678,26 @@ function applyFilter() {
     const vis = s.querySelectorAll('.plugin:not(.hidden)');
     if (vis.length === 0 && !s.classList.contains('hidden')) s.classList.add('hidden');
   });
+
+  // Empty state messages for filtered tabs
+  const emptyMsgs = {
+    issues: 'No validation issues found.',
+    duplicates: 'No duplicate skills detected.',
+    stale: 'All installed plugins are up to date.',
+  };
+  const oldEmpty = document.querySelector('.filter-empty-state');
+  if (oldEmpty) oldEmpty.remove();
+  if (emptyMsgs[activeFilter]) {
+    const visibleSkills = document.querySelectorAll('[data-source="installed"] .skill:not(.hidden)');
+    const visiblePlugins = document.querySelectorAll('[data-source="installed"] .plugin:not(.hidden)');
+    if (visibleSkills.length === 0 && visiblePlugins.length === 0) {
+      const msg = document.createElement('div');
+      msg.className = 'filter-empty-state';
+      msg.style.cssText = 'text-align:center;padding:32px 16px;color:var(--green);font-size:13px;font-family:"JetBrains Mono",monospace';
+      msg.textContent = emptyMsgs[activeFilter];
+      document.getElementById('content').appendChild(msg);
+    }
+  }
 }
 
 // Init
