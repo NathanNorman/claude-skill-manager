@@ -361,6 +361,17 @@
   .check-updates-btn:hover { border-color: var(--blue); color: var(--blue); }
   .check-updates-btn:disabled { opacity: 0.5; cursor: wait; }
   .tab-count { opacity: 0.6; font-size: 10px; }
+  .search-wrap { position: relative; display: flex; align-items: center; flex: 1; }
+  .search-wrap .search { width: 100%; padding-right: 24px; }
+  .search-clear {
+    position: absolute;
+    right: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+  .search-clear:hover { color: var(--text); }
   .hide-disabled-toggle {
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
@@ -1213,7 +1224,10 @@
     <button class="filter-btn" data-filter="issues">Issues</button>
     <button class="filter-btn" data-filter="stale">Updates</button>
     <button class="filter-btn" data-filter="marketplaces">Marketplaces</button>
-    <input type="text" class="search" id="search" placeholder="Search skills...">
+    <span class="search-wrap">
+      <input type="text" class="search" id="search" placeholder="Search skills...">
+      <span class="search-clear hidden" id="searchClear" onclick="document.getElementById('search').value=''; this.classList.add('hidden'); applyFilter();">&times;</span>
+    </span>
     <label class="hide-disabled-toggle" title="Hide disabled skills, commands, and agents">
       <input type="checkbox" id="hideDisabled" onchange="toggleHideDisabled(this.checked)"> hide disabled
     </label>
@@ -1240,6 +1254,15 @@ function saveCollapseState(key, collapsed) {
 }
 function getCollapseStates() {
   return JSON.parse(localStorage.getItem('sm-collapseStates') || '{}');
+}
+
+function issueLabel(code) {
+  const labels = {
+    no_frontmatter: 'Missing YAML frontmatter',
+    no_name: 'Missing name field in frontmatter',
+    no_description: 'Missing description field in frontmatter',
+  };
+  return labels[code] || code;
 }
 
 function toggleHideDisabled(checked) {
@@ -1407,15 +1430,8 @@ function skillProblems(skill) {
   // Validation issues
   if (skill.validation_issues && skill.validation_issues.length > 0) {
     for (const issue of skill.validation_issues) {
-      if (issue === 'no_frontmatter') {
-        problems.push({severity: 'red', message: 'Missing YAML frontmatter block. Claude Code may not load this skill correctly.'});
-      } else if (issue === 'no_name') {
-        problems.push({severity: 'yellow', message: "Missing 'name' field in frontmatter. The directory name is used as a fallback."});
-      } else if (issue === 'no_description') {
-        problems.push({severity: 'yellow', message: "Missing 'description' field in frontmatter. Claude Code uses the first paragraph of the body instead."});
-      } else {
-        problems.push({severity: 'yellow', message: issue});
-      }
+      const severity = issue === 'no_frontmatter' ? 'red' : 'yellow';
+      problems.push({severity, message: issueLabel(issue)});
     }
   }
 
@@ -1717,11 +1733,14 @@ function renderAgentRow(agent) {
   const toolsList = agent.tools && agent.tools.length ? agent.tools.map(t => esc(t)).join(', ') : '';
   const skillsInfo = agent.skills ? esc(agent.skills) : '';
   const isEnabled = agent.enabled !== false;
+  const hasIssues = agent.validation_issues && agent.validation_issues.length > 0;
+  const issueMessages = (agent.validation_issues || []).map(issueLabel);
   return `
-    <div class="component-row ${!isEnabled ? 'component-disabled' : ''}" data-component-type="agent" data-component-name="${esc(agent.name.toLowerCase())}">
+    <div class="component-row ${!isEnabled ? 'component-disabled' : ''}" data-component-type="agent" data-component-name="${esc(agent.name.toLowerCase())}" data-has-issues="${hasIssues}">
       <input type="checkbox" class="component-check" data-abs-path="${esc(agent.abs_path)}" ${isEnabled ? 'checked' : ''} onclick="event.stopPropagation(); toggleComponent(this)">
       <span class="mp-tag tag-agent">agent</span>
       <span class="component-row-name">${esc(agent.name)}</span>
+      ${hasIssues ? `<span class="skill-dot" style="background:var(--yellow)" data-tooltip="${esc(issueMessages.join(', '))}"></span>` : ''}
       ${modelBadge(agent.model)}
       <span class="component-row-desc">${esc(agent.description || '')}</span>
       <span class="component-row-meta">${toolsInfo}</span>
@@ -1744,12 +1763,7 @@ function renderCommandRow(cmd) {
   const chars = cmd.desc_chars || 0;
   const isEnabled = cmd.enabled !== false;
   const hasIssues = cmd.validation_issues && cmd.validation_issues.length > 0;
-  const issueMessages = (cmd.validation_issues || []).map(i => {
-    if (i === 'no_frontmatter') return 'Missing YAML frontmatter';
-    if (i === 'no_name') return 'Missing name field in frontmatter';
-    if (i === 'no_description') return 'Missing description field in frontmatter';
-    return i;
-  });
+  const issueMessages = (cmd.validation_issues || []).map(issueLabel);
   const issueTooltip = issueMessages.join(', ');
   return `
     <div class="component-row ${!isEnabled ? 'component-disabled' : ''}" data-component-type="command" data-component-name="${esc(cmd.name.toLowerCase())}" data-has-issues="${hasIssues}">
@@ -2761,6 +2775,17 @@ function applyFilter() {
     document.querySelectorAll('.component-row').forEach(r => {
       if (r.classList.contains('component-disabled')) r.classList.add('hidden');
     });
+    // Hide component sections where all rows are hidden
+    document.querySelectorAll('.component-section').forEach(s => {
+      const visibleRows = s.querySelectorAll('.component-row:not(.hidden)');
+      if (visibleRows.length === 0) s.classList.add('hidden');
+    });
+    // Hide entire plugin groups where all children are hidden
+    document.querySelectorAll('.plugin').forEach(p => {
+      const visibleSkills = p.querySelectorAll('.skill:not(.hidden)');
+      const visibleComponents = p.querySelectorAll('.component-section:not(.hidden)');
+      if (visibleSkills.length === 0 && visibleComponents.length === 0) p.classList.add('hidden');
+    });
   }
 
   // Empty state messages for filtered tabs
@@ -2794,7 +2819,11 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
   });
 });
 
-document.getElementById('search').addEventListener('input', applyFilter);
+document.getElementById('search').addEventListener('input', () => {
+  const clearBtn = document.getElementById('searchClear');
+  clearBtn.classList.toggle('hidden', !document.getElementById('search').value);
+  applyFilter();
+});
 
 Promise.all([fetchData(), fetchMarketplaces()])
   .then(([data, mpData]) => {

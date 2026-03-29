@@ -30,7 +30,9 @@ AGENTS_DIR = CLAUDE_DIR / "agents"
 COMMANDS_DIR = CLAUDE_DIR / "commands"
 INSTALLED_PLUGINS_FILE = PLUGINS_DIR / "installed_plugins.json"
 KNOWN_MARKETPLACES_FILE = PLUGINS_DIR / "known_marketplaces.json"
-PREFS_FILE = Path(__file__).parent / "preferences.json"
+DATA_DIR = CLAUDE_DIR / "skill-manager-data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+PREFS_FILE = DATA_DIR / "preferences.json"
 SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 PORT = 8421
 
@@ -492,6 +494,16 @@ def scan_agents(plugin_dir: Path, manifest: dict | None = None) -> list[dict]:
             tools = [t.strip() for t in tools_raw.split(",") if t.strip()]
         else:
             tools = []
+        # Validation issues
+        issues = []
+        fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+        if not fm_match:
+            issues.append("no_frontmatter")
+        else:
+            if "name:" not in fm_match.group(1):
+                issues.append("no_name")
+            if "description:" not in fm_match.group(1):
+                issues.append("no_description")
         results.append({
             "name": name,
             "description": fm.get("description", ""),
@@ -503,6 +515,7 @@ def scan_agents(plugin_dir: Path, manifest: dict | None = None) -> list[dict]:
             "abs_path": str(md_file),
             "enabled": not is_disabled,
             "frontmatter": fm,
+            "validation_issues": issues,
         })
 
     def _scan_agent_dir(d: Path):
@@ -984,6 +997,8 @@ def get_all_data() -> dict:
                 total_desc_chars += s.get("desc_chars", 0)
             total_issues += len(s.get("validation_issues", []))
         total_agents += len(g.get("agents", []))
+        for a in g.get("agents", []):
+            total_issues += len(a.get("validation_issues", []))
         cc = g.get("component_counts", {})
         total_commands += cc.get("commands", 0)
         total_hooks += len(g.get("hooks", []))

@@ -4,8 +4,10 @@ set -euo pipefail
 
 PORT=8421
 SCRIPT_DIR="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-PIDFILE="${SCRIPT_DIR}/.server.pid"
-LOG="${SCRIPT_DIR}/.server.log"
+DATA_DIR="${HOME}/.claude/skill-manager-data"
+mkdir -p "$DATA_DIR"
+PIDFILE="${DATA_DIR}/.server.pid"
+LOG="${DATA_DIR}/.server.log"
 
 # Check if already running
 if [ -f "$PIDFILE" ]; then
